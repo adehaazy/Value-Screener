@@ -1,0 +1,17 @@
+# Cache — regenerated automatically, no need to store in Git
+cache/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment / secrets — never commit your API key
+.env
+*.env
+
+# Mac system files
+.DS_Store
+
+# The nested screener-v3 working copy (duplicate of root files)
+screener-v3/
