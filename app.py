@@ -11,7 +11,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 
@@ -430,9 +430,94 @@ def _init_state():
         st.session_state.wl_refreshing = set()      # tickers currently being refreshed
     if "da_extra" not in st.session_state:
         st.session_state.da_extra = {}              # {ticker: extra_context_text}
+    if "auto_refresh" not in st.session_state:
+        st.session_state.auto_refresh = True        # on by default
+    if "last_auto_refresh" not in st.session_state:
+        st.session_state.last_auto_refresh = None   # ISO timestamp of last auto-refresh
 
 
 _init_state()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MARKET SCHEDULE — auto-refresh at open/close
+# ══════════════════════════════════════════════════════════════════════════════
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo  # Python < 3.9
+
+# Market open/close times in local tz (hour, minute)
+MARKET_SCHEDULE = {
+    "London":   {"tz": "Europe/London",   "open": (8, 0),  "close": (16, 30)},
+    "Frankfurt": {"tz": "Europe/Berlin",  "open": (9, 0),  "close": (17, 30)},
+    "New York": {"tz": "America/New_York", "open": (9, 30), "close": (16, 0)},
+}
+
+
+def _market_events_today() -> list[dict]:
+    """Return list of market events (open/close) as UTC datetimes for today."""
+    events = []
+    utc_now = datetime.now(timezone.utc)
+    for name, sched in MARKET_SCHEDULE.items():
+        tz = ZoneInfo(sched["tz"])
+        local_now = utc_now.astimezone(tz)
+        # Only weekdays
+        if local_now.weekday() >= 5:
+            continue
+        for event_type in ("open", "close"):
+            h, m = sched[event_type]
+            local_event = local_now.replace(hour=h, minute=m, second=0, microsecond=0)
+            events.append({
+                "market": name,
+                "type": event_type,
+                "utc": local_event.astimezone(timezone.utc),
+                "local_str": local_event.strftime("%H:%M %Z"),
+            })
+    return sorted(events, key=lambda e: e["utc"])
+
+
+def _should_auto_refresh() -> tuple[bool, str]:
+    """Check if we just crossed a market open/close boundary (within last 5 min)."""
+    if not st.session_state.auto_refresh:
+        return False, ""
+    utc_now = datetime.now(timezone.utc)
+    last = st.session_state.last_auto_refresh
+    if last:
+        try:
+            last_dt = datetime.fromisoformat(last)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            # Don't refresh more than once every 20 minutes
+            if (utc_now - last_dt).total_seconds() < 1200:
+                return False, ""
+        except Exception:
+            pass
+
+    for event in _market_events_today():
+        delta = (utc_now - event["utc"]).total_seconds()
+        # Fire if event was 0–5 minutes ago
+        if 0 <= delta <= 300:
+            label = f"{event['market']} {'opened' if event['type'] == 'open' else 'closed'}"
+            return True, label
+    return False, ""
+
+
+def _next_market_event() -> str | None:
+    """Return a human-readable string for the next market event."""
+    utc_now = datetime.now(timezone.utc)
+    for event in _market_events_today():
+        if event["utc"] > utc_now:
+            verb = "opens" if event["type"] == "open" else "closes"
+            mins = int((event["utc"] - utc_now).total_seconds() / 60)
+            if mins < 60:
+                return f"{event['market']} {verb} in {mins}m"
+            else:
+                h = mins // 60
+                m = mins % 60
+                return f"{event['market']} {verb} in {h}h {m}m"
+    return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
