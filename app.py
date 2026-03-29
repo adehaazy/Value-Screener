@@ -58,6 +58,51 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ══════════════════════════════════════════════════════════════════════════════
+# LOGIN GATE
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _check_login():
+    """Show a password gate before the app loads. Password stored in st.secrets."""
+    if st.session_state.get("authenticated"):
+        return True
+
+    # ── Centred login card ────────────────────────────────────────────────────
+    st.markdown(
+        '<style>'
+        'header[data-testid="stHeader"]{display:none}'
+        '[data-testid="stSidebar"]{display:none}'
+        '.login-wrap{display:flex;align-items:center;justify-content:center;min-height:80vh}'
+        '.login-card{background:#161b22;border:1px solid #30363d;border-radius:12px;'
+        'padding:2.5rem 2.5rem 2rem 2.5rem;width:100%;max-width:380px;text-align:center}'
+        '.login-title{font-size:1.6rem;font-weight:700;color:#e6edf3;margin-bottom:0.25rem}'
+        '.login-sub{font-size:0.85rem;color:#8b949e;margin-bottom:1.8rem}'
+        '</style>'
+        '<div class="login-wrap"><div class="login-card">'
+        '<div class="login-title">📊 Value Screener</div>'
+        '<div class="login-sub">Quality · Fair Price · Long-term</div>'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.form("login_form"):
+        st.markdown("#### Sign in")
+        password = st.text_input("Password", type="password", placeholder="Enter password")
+        submitted = st.form_submit_button("Sign in", use_container_width=True, type="primary")
+
+    if submitted:
+        correct = st.secrets.get("APP_PASSWORD", "")
+        if password == correct and correct != "":
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Incorrect password — please try again.")
+
+    return False
+
+if not _check_login():
+    st.stop()
+
 st.markdown("""
 <style>
 /* ── Layout ── */
@@ -624,6 +669,13 @@ with st.sidebar:
                      use_container_width=True):
             st.session_state.page = key
             st.rerun()
+
+    st.divider()
+
+    # ── Sign out ─────────────────────────────────────────────────────────────
+    if st.button("🔒  Sign out", use_container_width=True):
+        st.session_state.authenticated = False
+        st.rerun()
 
     st.divider()
 
