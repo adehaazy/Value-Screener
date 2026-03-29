@@ -9,6 +9,7 @@ Or:  double-click "Start Value Screener.command" (Mac)
 
 import json
 import sys
+import time
 from pathlib import Path
 from datetime import datetime
 
@@ -542,12 +543,17 @@ def load_all_data(groups: list, progress_cb=None) -> tuple:
             continue
         meta = UNIVERSE[group]
         for ticker, name in meta["tickers"].items():
+            needs_live_fetch = not _cache_is_fresh(ticker)
             inst = fetch_one(ticker, name, meta["asset_class"], group)
             raw.append(inst)
             done += 1
             if progress_cb:
                 progress_cb(done / max(total_tickers, 1),
                             f"Loading {group} — {name}")
+            # Pace live fetches to reduce Yahoo Finance rate-limiting (HTTP 429).
+            # No sleep needed if data came from local cache.
+            if needs_live_fetch and inst.get("ok") and done < total_tickers:
+                time.sleep(0.4)  # 400 ms between live fetches (~2.5 req/s)
 
     sector_medians = compute_sector_medians(raw)
     qt = _build_quality_thresholds()

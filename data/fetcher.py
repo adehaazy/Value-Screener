@@ -77,10 +77,44 @@ def fetch_one(ticker: str, name: str, asset_class: str, group: str,
         return {"ticker": ticker, "name": name, "asset_class": asset_class,
                 "group": group, "ok": False, "error": "yfinance not installed"}
 
-    try:
-        t = yf.Ticker(ticker)
-        info = t.info or {}
+    # Retry up to 3 times with exponential backoff on rate-limit errors
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            t = yf.Ticker(ticker)
+            info = t.info or {}
 
+            # If Yahoo returned an empty info dict with no price, treat as rate-limited
+            if not info or (not info.get("regularMarketPrice") and not info.get("currentPrice")
+                            and not info.get("navPrice") and not info.get("previousClose")):
+                if attempt < max_attempts - 1:
+                    time.sleep(2 ** attempt * 3)  # 3s, 6s
+                    continue
+
+            break  # success — exit retry loop
+
+        except Exception as e:
+            err_str = str(e).lower()
+            if ("429" in err_str or "too many" in err_str or "rate limit" in err_str) \
+                    and attempt < max_attempts - 1:
+                time.sleep(2 ** attempt * 5)  # 5s, 10s
+                continue
+            # Non-rate-limit error — return immediately
+            return {
+                "ticker": ticker, "name": name, "asset_class": asset_class,
+                "group": group, "ok": False, "error": str(e),
+                "fetched_at": datetime.now().isoformat(),
+            }
+    else:
+        # Exhausted retries
+        return {
+            "ticker": ticker, "name": name, "asset_class": asset_class,
+            "group": group, "ok": False,
+            "error": "Too Many Requests. Rate limited. Try after a while.",
+            "fetched_at": datetime.now().isoformat(),
+        }
+
+    try:
         # Price history
         hist = t.history(period="1y")
         hist_ytd = t.history(start=f"{datetime.now().year}-01-01")
