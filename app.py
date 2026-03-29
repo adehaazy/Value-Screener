@@ -942,14 +942,36 @@ def _render_score_breakdown(inst: dict):
         st.caption("Score breakdown not available.")
         return
 
+    # Friendly display names for score component keys
+    LABELS = {
+        "ev_ebitda_score": "EV/EBITDA",
+        "pfcf_score":      "P/Free Cash Flow",
+        "pe_score":        "P/E ratio",
+        "pb_score":        "P/Book",
+        "ptb_score":       "P/Tangible Book",
+        "roe_score":       "ROE vs peers",
+        "div_score":       "Dividend yield",
+        "wk52_score":      "52-week position",
+    }
+
     rows_html = ""
-    for label, item in components.items():
-        score  = item.get("score")
-        weight = item.get("weight", 0)
+    for key, item in components.items():
+        # New format: item is a plain float (or None)
+        # Old format: item is a dict with "score" and "weight" keys
+        if isinstance(item, dict):
+            score  = item.get("score")
+            weight = item.get("weight", 0)
+            weight_str = f"{weight}%"
+        else:
+            score  = float(item) if item is not None else None
+            weight_str = ""
+
+        label = LABELS.get(key, key.replace("_score", "").replace("_", " ").title())
+
         if score is None:
             bar_html = '<div class="breakdown-bar-bg"><div class="breakdown-bar-fill" style="width:0%;background:#555"></div></div>'
             score_str = "no data"
-            label_col = "#666"
+            label_col = "#555"
         else:
             pct   = max(min(score, 100), 0)
             col   = score_colour(score)
@@ -963,12 +985,17 @@ def _render_score_breakdown(inst: dict):
                       f'<span style="min-width:160px;color:{label_col}">{label}</span>'
                       f'{bar_html}'
                       f'<span style="min-width:60px;text-align:right;color:{label_col}">{score_str}</span>'
-                      f'<span style="min-width:42px;text-align:right;color:#555">{weight}%</span>'
+                      f'<span style="min-width:42px;text-align:right;color:#555">{weight_str}</span>'
                       f'</div>')
 
-    note = ""
-    if inst.get("sector_relative"):
-        note = '<div style="font-size:0.7rem;color:#555;margin-top:6px">Valuation scored relative to sector peers</div>'
+    is_fin = inst.get("is_financial", False)
+    coverage = inst.get("score_coverage")
+    note = '<div style="font-size:0.7rem;color:#555;margin-top:6px">Scored relative to sector peers'
+    if is_fin:
+        note += " · Financial sector model (P/TangBook + ROE)"
+    if coverage is not None:
+        note += f" · Data coverage {coverage*100:.0f}%"
+    note += "</div>"
     st.markdown(f'<div style="padding:4px 0">{rows_html}{note}</div>', unsafe_allow_html=True)
 
 
