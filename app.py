@@ -680,10 +680,49 @@ def _auto_load_from_cache(groups: list):
     return True
 
 
-# Auto-load on startup from cache (no fetch required)
+# ── Startup: load from cache if available ──────────────────────────────────
 if not st.session_state.instruments and any_cache_exists():
     groups = st.session_state.prefs.get("groups", list(UNIVERSE.keys())[:2])
     _auto_load_from_cache(groups)
+
+# ── Auto-refresh at market open/close ──────────────────────────────────────
+# Poll every 5 minutes (300 000 ms). On Streamlit Cloud the app is kept alive
+# by user sessions; the component just triggers a re-run to check the schedule.
+try:
+    from streamlit_autorefresh import st_autorefresh   # pip install streamlit-autorefresh
+    st_autorefresh(interval=300_000, key="market_clock")
+except ImportError:
+    pass  # Graceful degradation if package not installed
+
+_do_auto_refresh, _refresh_reason = _should_auto_refresh()
+if _do_auto_refresh:
+    _groups = st.session_state.prefs.get("groups", list(UNIVERSE.keys())[:2])
+    if _groups:
+        _prog = st.sidebar.progress(0, text=f"Auto-refresh: {_refresh_reason}…")
+        def _auto_cb(pct, msg):
+            _prog.progress(pct, text=msg)
+        _scored, _sm = load_all_data(_groups, progress_cb=_auto_cb)
+        _prog.empty()
+        st.session_state.instruments    = _scored
+        st.session_state.sector_medians = _sm
+        st.session_state.last_fetch     = datetime.now().strftime("%H:%M  %d %b %Y")
+        st.session_state.last_auto_refresh = datetime.now(timezone.utc).isoformat()
+        _ok = [x for x in _scored if x.get("ok")]
+        save_scan_summary({
+            "total": len(_ok),
+            "stocks_passing_quality": sum(
+                1 for x in _ok if x.get("asset_class") == "Stock" and x.get("quality_passes")
+            ),
+            "strong_value":  sum(1 for x in _ok if (_f(x.get("score")) or 0) >= 75),
+            "top_picks": [
+                {"ticker": x["ticker"], "name": x["name"],
+                 "score": x.get("score"), "verdict": x.get("verdict", "")}
+                for x in sorted(_ok, key=lambda r: _f(r.get("score")) or 0, reverse=True)[:5]
+            ],
+            "fetched_at": datetime.now().isoformat(),
+        })
+        st.session_state.toast = (f"📡 Data refreshed — {_refresh_reason}", "info")
+        st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -731,23 +770,22 @@ def apply_filters(instruments: list, include_excluded=False) -> list:
 # ══════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
+    # ── Branding ─────────────────────────────────────────────────────────────
     st.markdown("## 📊 Value Screener")
     st.caption("Quality · Fair Price · Long-term")
     st.divider()
 
     # ── Navigation ──────────────────────────────────────────────────────────
-    # Show alert badge on Signals nav button if there are high-severity signals
     _latest_signals = load_latest_signals()
     _high_count = sum(1 for s in _latest_signals if s.get("severity") == "high")
-    _signals_label = f"🚨  Signals  ({_high_count} new)" if _high_count > 0 else "🚨  Signals"
-
+    _signals_label = f"🚨  Signals ({_high_count} new)" if _high_count > 0 else "🚨  Signals"
     _scoring_changed = st.session_state.scoring_changed
-    _settings_label  = "⚙️  Settings  ●" if _scoring_changed else "⚙️  Settings"
+    _settings_label  = "⚙️  Settings ●" if _scoring_changed else "⚙️  Settings"
 
     pages = {
         "🏠  Dashboard":   "home",
-        "🔍  Find Ideas":  "screener",
-        "⭐  My Holdings": "watchlist",
+        "🔍  Screen":      "screener",
+        "⭐  Holdings":    "watchlist",
         "📈  Compare":     "compare",
         _signals_label:    "signals",
         "📰  Briefing":    "briefing",
@@ -763,28 +801,29 @@ with st.sidebar:
 
     st.divider()
 
-    # ── Sign out ─────────────────────────────────────────────────────────────
-    if st.button("🔒  Sign out", use_container_width=True):
-        st.session_state.authenticated = False
-        st.rerun()
-
-    st.divider()
-
-    # ── Universe + Load ──────────────────────────────────────────────────────
-    st.markdown('<div class="section-header">Markets to screen</div>', unsafe_allow_html=True)
+    # ── Data & Markets ───────────────────────────────────────────────────────
+    st.markdown('<div class="section-header">Markets</div>', unsafe_allow_html=True)
 
     chosen_groups = st.multiselect(
-        "Asset classes",
+        "Markets",
         list(UNIVERSE.keys()),
         default=st.session_state.prefs.get("groups", ["🇬🇧 UK Stocks", "📦 ETFs & Index Funds"]),
         label_visibility="collapsed",
+        help="Select which markets to include in the screen",
     )
-    # FIX Bug 12: use set comparison so order differences don't falsely trigger a save
     if set(chosen_groups) != set(st.session_state.prefs.get("groups", [])):
         st.session_state.prefs["groups"] = chosen_groups
         _save_json("prefs.json", st.session_state.prefs)
 
-    fetch_label = "🔄  Refresh Data" if st.session_state.instruments else "⬇️  Load Data"
+    # Data freshness indicator
+    _age = cache_age_hours()
+    if _age is not None:
+        _freshness = "🟢 Live" if _age < 1 else ("🟡 %dh old" % int(_age) if _age < 8 else "🔴 Stale")
+        st.caption(_freshness)
+    else:
+        st.caption("⬜ No data yet")
+
+    fetch_label = "🔄  Refresh Now" if st.session_state.instruments else "⬇️  Load Data"
     if st.button(fetch_label, type="primary", use_container_width=True):
         if chosen_groups:
             prog = st.progress(0, text="Starting…")
@@ -795,6 +834,7 @@ with st.sidebar:
             st.session_state.instruments    = scored
             st.session_state.sector_medians = sm
             st.session_state.last_fetch     = datetime.now().strftime("%H:%M  %d %b %Y")
+            st.session_state.last_auto_refresh = datetime.now(timezone.utc).isoformat()
             ok = [x for x in scored if x.get("ok")]
             save_scan_summary({
                 "total": len(ok),
@@ -812,29 +852,35 @@ with st.sidebar:
             })
             st.rerun()
         else:
-            st.warning("Choose at least one market above.")
+            st.warning("Select at least one market above.")
 
-    age = cache_age_hours()
-    if age is not None:
-        st.caption(f"Data is {age:.0f}h old · {'fresh' if age < 6 else 'consider refreshing'}")
+    # ── Auto-refresh toggle + next event ─────────────────────────────────────
+    _next_event = _next_market_event()
+    _auto_on = st.session_state.auto_refresh
+    _auto_label = "Auto-refresh: on" if _auto_on else "Auto-refresh: off"
+    if st.toggle(_auto_label, value=_auto_on, key="auto_refresh_toggle",
+                 help="Automatically refresh prices at each market open and close (London, Frankfurt, New York)"):
+        st.session_state.auto_refresh = True
     else:
-        st.caption("No data loaded yet")
+        st.session_state.auto_refresh = False
+    if _next_event and st.session_state.auto_refresh:
+        st.caption(f"Next: {_next_event}")
 
     st.divider()
 
-    # ── Filters (only shown on Find Ideas page) ──────────────────────────────
+    # ── Filters (only shown on Screen page) ──────────────────────────────────
     current_page = st.session_state.page
     if current_page == "screener":
         st.markdown('<div class="section-header">Filters</div>', unsafe_allow_html=True)
         p = st.session_state.prefs
 
-        min_score = st.slider("Minimum score",            0,   100, int(p.get("min_score", 0)),   5,
+        min_score = st.slider("Min score",          0,   100, int(p.get("min_score", 0)),   5,
                               help="Only show instruments scoring at least this")
-        min_yield = st.slider("Minimum yield (%)",        0.0,  8.0, float(p.get("min_yield", 0.0)), 0.5,
+        min_yield = st.slider("Min yield (%)",      0.0,  8.0, float(p.get("min_yield", 0.0)), 0.5,
                               help="Minimum dividend or distribution yield")
-        max_pe    = st.slider("Max P/E (stocks)",         5,   100, int(p.get("max_pe",  100)),   5,
+        max_pe    = st.slider("Max P/E",            5,   100, int(p.get("max_pe",  100)),   5,
                               help="Filter out expensive stocks. Set to 100 to show all.")
-        max_ter   = st.slider("Max fund cost / TER (%)",  0.05, 1.5, float(p.get("max_ter", 1.5)), 0.05,
+        max_ter   = st.slider("Max TER (%)",        0.05, 1.5, float(p.get("max_ter", 1.5)), 0.05,
                               help="Maximum annual fee for ETFs and money market funds")
 
         changed = (min_score != p.get("min_score") or min_yield != p.get("min_yield")
@@ -846,24 +892,23 @@ with st.sidebar:
             p["max_ter"]   = max_ter
             _save_json("prefs.json", p)
 
-        st.divider()
-        # ── Quality gate settings ────────────────────────────────────────────
-        with st.expander("⚙️  Quality gate (stocks only)"):
-            st.caption("Stocks must pass ALL of these to appear in results.")
-            # FIX Bug 7: slider now 0–10 (ratio), stored as ratio, no unit confusion
-            min_roe = st.slider("Minimum ROE (%)",     0, 30, int(p.get("min_roe", 10)), 1,
-                                help="Return on Equity — how efficiently the business uses your money")
-            max_de  = st.slider("Max Debt/Equity",     0, 10, int(p.get("max_de",   2)), 1,
+        with st.expander("Quality gate"):
+            st.caption("Stocks must pass ALL of these to appear.")
+            min_roe = st.slider("Min ROE (%)",    0, 30, int(p.get("min_roe", 10)), 1,
+                                help="Return on Equity — how efficiently the business uses capital")
+            max_de  = st.slider("Max Debt/Equity", 0, 10, int(p.get("max_de",   2)), 1,
                                 help="Financial leverage. 2 = manageable, 5+ = high risk.")
             if min_roe != p.get("min_roe") or max_de != p.get("max_de"):
                 p["min_roe"] = min_roe
                 p["max_de"]  = max_de
                 _save_json("prefs.json", p)
 
-    elif current_page == "home":
-        st.markdown('<div class="section-header">Quick settings</div>', unsafe_allow_html=True)
-        st.caption("Switch to Find Ideas for full filters")
-    # On watchlist / compare / signals / briefing pages, sidebar stays clean — no filter noise
+    st.divider()
+
+    # ── Sign out ─────────────────────────────────────────────────────────────
+    if st.button("Sign out", use_container_width=True, key="signout_btn"):
+        st.session_state.authenticated = False
+        st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1213,7 +1258,7 @@ def render_card(inst: dict, show_add_watchlist=True):
 
 def page_home():
     _render_counter.clear()
-    st.markdown("# Good to see you, Ade.")
+    st.markdown("# 🏠 Dashboard")
 
     instruments = st.session_state.instruments
     age         = cache_age_hours()
@@ -1223,8 +1268,11 @@ def page_home():
         st.markdown(
             '<div style="text-align:center;padding:60px 20px;color:#8890b0">'
             '<div style="font-size:3rem;margin-bottom:16px">📊</div>'
-            '<div style="font-size:1.2rem;font-weight:600;color:#c8cee8;margin-bottom:8px">Welcome to your Value Screener</div>'
-            '<div style="font-size:0.9rem;line-height:1.6">Select the markets you want to watch in the sidebar,<br>then click <b>Load Data</b> to get started.</div>'
+            '<div style="font-size:1.2rem;font-weight:600;color:#c8cee8;margin-bottom:8px">Welcome to Value Screener</div>'
+            '<div style="font-size:0.9rem;line-height:1.6;margin-bottom:24px">'
+            'Choose your markets in the sidebar, then click <b>Load Data</b>.<br>'
+            'Prices refresh automatically at each market open and close.'
+            '</div>'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -1238,7 +1286,12 @@ def page_home():
     wl_count     = len(st.session_state.watchlist)
     flagged      = [x for x in ok if x.get("has_signals")]
 
-    age_str = f"Data updated {age:.0f}h ago" if age is not None else "Loaded from cache"
+    if age is not None:
+        age_str = ("🟢 Live" if age < 1 else
+                   f"🟡 {age:.0f}h old" if age < 8 else
+                   f"🔴 Stale — {age:.0f}h old")
+    else:
+        age_str = "⬜ Cache"
     last_surv = get_last_run_time()
     surv_str  = ""
     if last_surv:
@@ -1247,7 +1300,9 @@ def page_home():
             surv_str = f"  ·  Surveillance {surv_dt.strftime('%H:%M %d %b')}"
         except Exception:
             pass
-    st.caption(f"{age_str}{surv_str}  ·  {datetime.now().strftime('%A %d %B %Y')}")
+    next_ev = _next_market_event()
+    next_str = f"  ·  {next_ev}" if next_ev else ""
+    st.caption(f"{age_str}{surv_str}{next_str}  ·  {datetime.now().strftime('%A %d %B %Y')}")
     st.markdown('<div style="height:0.5rem"></div>', unsafe_allow_html=True)
 
     # ── Macro status bar ──────────────────────────────────────────────────────
@@ -1353,11 +1408,11 @@ def page_home():
 
 def page_screener():
     _render_counter.clear()
-    st.markdown("# 🔍 Find Ideas")
+    st.markdown("# 🔍 Screen")
 
     instruments = st.session_state.instruments
     if not instruments:
-        st.info("👈  Choose your markets in the sidebar and click **Load Data** to begin.")
+        st.info("👈  Select markets in the sidebar and click **Load Data** to screen them.")
         return
 
     filtered = apply_filters(instruments, include_excluded=False)
@@ -1431,9 +1486,9 @@ def page_screener():
         st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
         st.divider()
         toggle_label = (
-            f"▼  Hide {len(excluded)} excluded stocks (failed quality filter)"
+            f"Hide {len(excluded)} stocks that failed quality filter"
             if st.session_state.show_excluded
-            else f"▶  Show {len(excluded)} excluded stocks (failed quality filter)"
+            else f"Show {len(excluded)} stocks that failed quality filter"
         )
         if st.button(toggle_label, key="toggle_excluded"):
             st.session_state.show_excluded = not st.session_state.show_excluded
@@ -1724,7 +1779,7 @@ def _render_deep_analysis(inst: dict):
     age    = cache_age_days(ticker)
 
     st.markdown("---")
-    st.markdown("#### 🔬 Deep Analysis")
+    st.markdown('<div class="section-header">Deep analysis</div>', unsafe_allow_html=True)
 
     # Status line
     if cached:
@@ -1962,11 +2017,11 @@ def _refresh_single_ticker(wl_entry: dict):
 
 def page_watchlist():
     _render_counter.clear()
-    st.markdown("# ⭐ My Holdings & Watchlist")
+    st.markdown("# ⭐ Holdings")
 
     # ── Search & Add any instrument ───────────────────────────────────────────
-    st.markdown("### 🔍 Search & Add Any Instrument")
-    st.caption("Enter any ticker symbol (e.g. NVDA, HSBA.L, SIE.DE) or a company name to look it up and add it to your watchlist.")
+    st.markdown('<div class="section-header">Add to holdings</div>', unsafe_allow_html=True)
+    st.caption("Enter a ticker (e.g. NVDA, HSBA.L, SIE.DE) or company name to search and add.")
 
     search_col, btn_col = st.columns([4, 1])
     with search_col:
@@ -2153,7 +2208,7 @@ def page_compare():
             render_card(inst, show_add_watchlist=True)
 
     st.divider()
-    st.markdown("#### Detailed metrics")
+    st.markdown('<div class="section-header">Detailed metrics</div>', unsafe_allow_html=True)
 
     def _roe_fmt(inst):
         v = _f(inst.get("roe"))
@@ -2242,7 +2297,7 @@ def page_signals():
             st.caption("No surveillance run yet. Click Run Surveillance to generate signals.")
 
     with col_btn:
-        if st.button("▶  Run Surveillance", type="primary", use_container_width=True,
+        if st.button("🚨  Run Surveillance", type="primary", use_container_width=True,
                      key="run_surv_btn"):
             with st.spinner("Running surveillance — this takes 2–5 minutes on first run…"):
                 try:
@@ -2260,7 +2315,7 @@ def page_signals():
 
     if not signals:
         st.info("""
-        **No signals yet.**  Click **▶ Run Surveillance** above to:
+        **No signals yet.**  Click **Run Surveillance** above to:
         - Fetch macro data (FRED, BoE)
         - Pull RSS headlines and score sentiment
         - Check SEC insider transactions
@@ -2354,7 +2409,7 @@ def page_briefing():
 
     col_title, col_btn = st.columns([3, 1])
     with col_btn:
-        if st.button("▶  Generate Briefing", type="primary", use_container_width=True,
+        if st.button("📰  Generate Briefing", type="primary", use_container_width=True,
                      key="gen_briefing_btn"):
             with st.spinner("Running full surveillance and generating briefing…"):
                 try:
