@@ -2,6 +2,7 @@ streamlit>=1.32.0
 yfinance>=0.2.37
 pandas>=2.0.0
 numpy>=1.26.0
+anthropic>=0.25.0
 
 # Surveillance layer — all free, no API keys required
 # vaderSentiment: local sentiment scoring of news headlines (no API needed)
