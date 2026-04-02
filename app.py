@@ -650,19 +650,23 @@ def load_all_data(groups: list, progress_cb=None) -> tuple:
 
 
 def _auto_load_from_cache(groups: list):
-    """Load instruments from local cache without hitting Yahoo Finance."""
+    """Load instruments from SQLite cache without hitting Yahoo Finance.
+    Loads ALL available cached data (even if prices are slightly stale) so
+    the app is instantly usable on startup. A stale-data banner in the
+    sidebar prompts the user to refresh when needed.
+    """
     raw = []
     for group in groups:
         if group not in UNIVERSE:
             continue
         meta = UNIVERSE[group]
         for ticker, name in meta["tickers"].items():
-            if _cache_is_fresh(ticker):
-                inst = _load_cache(ticker)
+            inst = _load_cache(ticker)   # returns data regardless of age
+            if inst:
                 inst["name"]        = name
                 inst["group"]       = group
                 inst["asset_class"] = meta["asset_class"]
-                inst.setdefault("ok", True)   # ensure ok flag exists on old cache files
+                inst.setdefault("ok", True)
                 raw.append(inst)
 
     if not raw:
@@ -820,6 +824,13 @@ with st.sidebar:
     if _age is not None:
         _freshness = "🟢 Live" if _age < 1 else ("🟡 %dh old" % int(_age) if _age < 8 else "🔴 Stale")
         st.caption(_freshness)
+        # Show stale-data warning so user knows prices may be outdated
+        if _age >= 6 and st.session_state.instruments:
+            st.warning(
+                "Prices last updated **%dh ago**. "
+                "Click **Refresh Now** for live data." % int(_age),
+                icon="⏰",
+            )
     else:
         st.caption("⬜ No data yet")
 
