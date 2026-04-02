@@ -142,11 +142,13 @@ def _score_vs_median(
         # ratio < 1 → cheaper than median → score > 50
         # Use logistic-style transform: score = 100 / (1 + exp(k*(ratio-1)))
         k = 3.0 * sensitivity
-        score = 100.0 / (1.0 + math.exp(k * (ratio - 1.0)))
+        exponent = max(-500.0, min(500.0, k * (ratio - 1.0)))   # clamp to prevent OverflowError
+        score = 100.0 / (1.0 + math.exp(exponent))
     else:
         # Higher is better (e.g. ROE)
         k = 3.0 * sensitivity
-        score = 100.0 / (1.0 + math.exp(-k * (ratio - 1.0)))
+        exponent = max(-500.0, min(500.0, -k * (ratio - 1.0)))  # clamp to prevent OverflowError
+        score = 100.0 / (1.0 + math.exp(exponent))
 
     return _clamp(score)
 
