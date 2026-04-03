@@ -1,0 +1,9 @@
+streamlit>=1.32.0
+yfinance>=0.2.38
+pandas>=2.0.0
+anthropic>=0.25.0
+streamlit-autorefresh>=1.0.1
+vaderSentiment>=3.3.2
+finnews
+fake-useragent>=1.4.0
+requests>=2.31.0
