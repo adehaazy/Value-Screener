@@ -2094,8 +2094,7 @@ def _do_watchlist_search(query: str):
             else:
                 group = "🇺🇸 US Stocks"
 
-            from data.fetcher import _float as _ff
-            div_raw = _ff(info.get("dividendYield"))
+            div_raw = _f(info.get("dividendYield"))
             if div_raw is None:
                 div_yield = None
             elif div_raw > 1.0:
@@ -2104,9 +2103,9 @@ def _do_watchlist_search(query: str):
                 div_yield = round(div_raw * 100, 2)
 
             hist = t.history(period="1y")
-            price    = _ff(hist["Close"].iloc[-1])  if not hist.empty else None
-            high_52w = _ff(hist["Close"].max())     if not hist.empty else None
-            low_52w  = _ff(hist["Close"].min())     if not hist.empty else None
+            price    = _f(hist["Close"].iloc[-1])  if not hist.empty else None
+            high_52w = _f(hist["Close"].max())     if not hist.empty else None
+            low_52w  = _f(hist["Close"].min())     if not hist.empty else None
             yr1_ret  = None
             if not hist.empty and len(hist) > 10:
                 yr1_ret = round((hist["Close"].iloc[-1] / hist["Close"].iloc[0] - 1) * 100, 1)
@@ -2124,10 +2123,10 @@ def _do_watchlist_search(query: str):
                 "high_52w":    round(high_52w, 2) if high_52w else None,
                 "low_52w":     round(low_52w, 2)  if low_52w  else None,
                 "yr1_pct":     yr1_ret,
-                "pe":          _ff(info.get("trailingPE")),
-                "pb":          _ff(info.get("priceToBook")),
+                "pe":          _f(info.get("trailingPE")),
+                "pb":          _f(info.get("priceToBook")),
                 "div_yield":   div_yield,
-                "market_cap":  _ff(info.get("marketCap")),
+                "market_cap":  _f(info.get("marketCap")),
                 "ok":          True,
             }
             st.session_state.wl_search_result = result
@@ -2778,7 +2777,6 @@ def page_deepdive():
         with st.spinner(f"Looking up {search_query.strip()} …"):
             # Reuse the existing watchlist search logic but store in dd_search_result
             import yfinance as yf
-            from data.fetcher import _float as _ff
             query  = search_query.strip()
             ticker = query.upper().strip()
             try:
@@ -2813,14 +2811,14 @@ def page_deepdive():
                         group = "📦 ETFs & Index Funds"
                     else:
                         group = "🇺🇸 US Stocks"
-                    div_raw   = _ff(info.get("dividendYield"))
+                    div_raw   = _f(info.get("dividendYield"))
                     div_yield = None
                     if div_raw is not None:
                         div_yield = round(min(div_raw * 100 if div_raw <= 1.0 else div_raw, 99.0), 2)
                     hist     = t.history(period="1y")
-                    price    = _ff(hist["Close"].iloc[-1]) if not hist.empty else None
-                    high_52w = _ff(hist["Close"].max())    if not hist.empty else None
-                    low_52w  = _ff(hist["Close"].min())    if not hist.empty else None
+                    price    = _f(hist["Close"].iloc[-1]) if not hist.empty else None
+                    high_52w = _f(hist["Close"].max())    if not hist.empty else None
+                    low_52w  = _f(hist["Close"].min())    if not hist.empty else None
                     yr1_ret  = None
                     if not hist.empty and len(hist) > 10:
                         yr1_ret = round((hist["Close"].iloc[-1] / hist["Close"].iloc[0] - 1) * 100, 1)
@@ -2834,10 +2832,10 @@ def page_deepdive():
                         "high_52w":  round(high_52w, 2) if high_52w else None,
                         "low_52w":   round(low_52w, 2)  if low_52w  else None,
                         "yr1_pct":   yr1_ret,
-                        "pe":        _ff(info.get("trailingPE")),
-                        "pb":        _ff(info.get("priceToBook")),
+                        "pe":        _f(info.get("trailingPE")),
+                        "pb":        _f(info.get("priceToBook")),
                         "div_yield": div_yield,
-                        "market_cap":_ff(info.get("marketCap")),
+                        "market_cap":_f(info.get("marketCap")),
                         "ok":        True,
                     }
             except Exception as exc:
