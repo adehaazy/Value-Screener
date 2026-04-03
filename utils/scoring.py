@@ -138,16 +138,17 @@ def _score_vs_median(
 
     ratio = value / sector_med   # 1.0 = at median, <1.0 = cheaper (if lower_is_better)
 
+    _EXP_CLAMP = 500.0  # math.exp(709) overflows; clamp well below that
+
     if lower_is_better:
         # ratio < 1 → cheaper than median → score > 50
-        # Use logistic-style transform: score = 100 / (1 + exp(k*(ratio-1)))
         k = 3.0 * sensitivity
-        exponent = max(-500.0, min(500.0, k * (ratio - 1.0)))   # clamp to prevent OverflowError
+        exponent = min(k * (ratio - 1.0), _EXP_CLAMP)
         score = 100.0 / (1.0 + math.exp(exponent))
     else:
         # Higher is better (e.g. ROE)
         k = 3.0 * sensitivity
-        exponent = max(-500.0, min(500.0, -k * (ratio - 1.0)))  # clamp to prevent OverflowError
+        exponent = max(-k * (ratio - 1.0), -_EXP_CLAMP)
         score = 100.0 / (1.0 + math.exp(exponent))
 
     return _clamp(score)
