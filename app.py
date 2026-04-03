@@ -102,6 +102,7 @@ def _check_login():
         correct = st.secrets.get("APP_PASSWORD", "")
         if password == correct and correct != "":
             st.session_state.authenticated = True
+            st.session_state.user_name = st.secrets.get("APP_USERNAME", "")
             st.rerun()
         else:
             st.error("Incorrect password — please try again.")
@@ -779,6 +780,8 @@ def _init_state():
         st.session_state.watchlist = _load_json("watchlist.json", [])
     if "holdings" not in st.session_state:
         st.session_state.holdings = _load_json("holdings.json", [])
+    if "user_name" not in st.session_state:
+        st.session_state.user_name = st.secrets.get("APP_USERNAME", "")
     if "prefs" not in st.session_state:
         st.session_state.prefs = _load_json("prefs.json", {
             # Display filters
@@ -1678,9 +1681,49 @@ def _home_summary_tile(col, num, label, colour="var(--vs-navy)"):
         )
 
 
+def _nav_heading(label, page_key, subtitle=None):
+    """Render a clickable section heading that navigates to page_key on click."""
+    sub_html = (
+        f'<div style="font-size:0.78rem;color:var(--vs-ink-soft);'
+        f'font-family:\'Inter\',-apple-system,sans-serif;font-weight:400;'
+        f'letter-spacing:0.03em;margin-top:2px">{subtitle}</div>'
+        if subtitle else ""
+    )
+    col_h, col_btn = st.columns([5, 1])
+    with col_h:
+        st.markdown(
+            f'<div style="margin-bottom:0.1rem">'
+            f'<div class="section-header" style="margin-bottom:0">{label}</div>'
+            f'{sub_html}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with col_btn:
+        if st.button("View all →", key=f"nav_{page_key}_{label[:6]}", use_container_width=True):
+            st.session_state.page = page_key
+            st.rerun()
+
+
 def page_home():
     _render_counter.clear()
-    st.markdown("# Home")
+
+    # ── Welcome heading ───────────────────────────────────────────────────────
+    user = st.session_state.get("user_name", "")
+    greeting = f"Good morning, {user}" if user else "Good morning"
+    now_h = datetime.now().hour
+    if now_h >= 12 and now_h < 17:
+        greeting = f"Good afternoon, {user}" if user else "Good afternoon"
+    elif now_h >= 17:
+        greeting = f"Good evening, {user}" if user else "Good evening"
+
+    st.markdown(
+        f'<div style="margin-bottom:0.1rem">'
+        f'<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:2rem;'
+        f'font-weight:700;color:var(--vs-navy);letter-spacing:-0.02em;line-height:1.15">'
+        f'{greeting}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     instruments = st.session_state.instruments
     ok          = [x for x in instruments if x.get("ok")] if instruments else []
@@ -1729,7 +1772,7 @@ def page_home():
     # ══════════════════════════════════════════════════════════════════════════
     # SECTION 1 — YOUR HOLDINGS
     # ══════════════════════════════════════════════════════════════════════════
-    st.markdown('<div class="section-header">Your Holdings</div>', unsafe_allow_html=True)
+    _nav_heading("Your Holdings", "deepdive", "Positions you currently hold")
 
     if not holdings:
         st.markdown(
@@ -1776,28 +1819,24 @@ def page_home():
 
             st.markdown('<div style="height:0.75rem"></div>', unsafe_allow_html=True)
 
-            # Cards — 2 per row
-            h_sorted = sorted(h_live, key=lambda x: _f(x.get("score")) or 0, reverse=True)
-            pairs    = [h_sorted[i:i+2] for i in range(0, len(h_sorted), 2)]
-            for pair in pairs:
-                cols = st.columns(2)
-                for j, inst in enumerate(pair):
-                    with cols[j]:
-                        render_card(inst, show_add_watchlist=False)
+            # Top 2 cards only (highest scored); "View all" in heading navigates to Deepdive
+            h_sorted  = sorted(h_live, key=lambda x: _f(x.get("score")) or 0, reverse=True)
+            top2      = h_sorted[:2]
+            cols = st.columns(2)
+            for j, inst in enumerate(top2):
+                with cols[j]:
+                    render_card(inst, show_add_watchlist=False)
+            if len(h_live) > 2:
+                st.caption(f"+{len(h_live) - 2} more — use View all → to see your full portfolio.")
 
-            if len(holdings) > len(h_live):
-                st.caption(f"{len(holdings) - len(h_live)} holding(s) not shown — data not loaded.")
-
-        if st.button("→  Manage holdings", key="home_goto_holdings"):
-            st.session_state.page = "deepdive"
-            st.rerun()
+        pass  # navigation handled by _nav_heading
 
     st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
     # SECTION 2 — WATCHLIST
     # ══════════════════════════════════════════════════════════════════════════
-    st.markdown('<div class="section-header">Watchlist</div>', unsafe_allow_html=True)
+    _nav_heading("Watchlist", "deepdive", "Instruments you are monitoring")
 
     if not watchlist:
         st.markdown(
@@ -1832,18 +1871,14 @@ def page_home():
 
             st.markdown('<div style="height:0.75rem"></div>', unsafe_allow_html=True)
 
-            # Show top 4 watchlist items as cards
-            pairs = [best_wl[:4][i:i+2] for i in range(0, min(4, len(best_wl)), 2)]
-            for pair in pairs:
-                cols = st.columns(2)
-                for j, inst in enumerate(pair):
-                    with cols[j]:
-                        render_card(inst, show_add_watchlist=False)
-
-            if len(wl_live) > 4:
-                if st.button(f"→  See all {len(wl_live)} watchlist items", key="home_goto_wl"):
-                    st.session_state.page = "deepdive"
-                    st.rerun()
+            # Top 2 cards only; "View all" in heading navigates to Deepdive
+            top2_wl = best_wl[:2]
+            cols = st.columns(2)
+            for j, inst in enumerate(top2_wl):
+                with cols[j]:
+                    render_card(inst, show_add_watchlist=False)
+            if len(wl_live) > 2:
+                st.caption(f"+{len(wl_live) - 2} more — use View all → to see your full watchlist.")
 
     st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
 
@@ -1861,14 +1896,29 @@ def page_home():
     )[:4]
 
     if radar:
-        st.markdown('<div class="section-header">Radar — top picks not yet held or watched</div>',
-                    unsafe_allow_html=True)
-        pairs = [radar[i:i+2] for i in range(0, len(radar), 2)]
-        for pair in pairs:
-            cols = st.columns(2)
-            for j, inst in enumerate(pair):
-                with cols[j]:
-                    render_card(inst, show_add_watchlist=True)
+        _nav_heading("Radar", "screener", "Top-scored ideas not yet held or watched")
+        # Compact chip row — one chip per ticker
+        chips_html = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;margin-bottom:0.5rem">'
+        for inst in radar:
+            tkr   = inst.get("ticker", "")
+            name  = inst.get("name", tkr)
+            score = _f(inst.get("score"))
+            sc    = score_colour(score) if score is not None else "#6B7D92"
+            sb    = score_bg(score)     if score is not None else "#F4F1EC"
+            score_txt = f"{score:.0f}" if score is not None else "—"
+            chips_html += (
+                f'<div style="display:flex;align-items:center;gap:6px;'
+                f'background:var(--vs-bg-card);border:1px solid var(--vs-rule);'
+                f'border-radius:20px;padding:6px 14px 6px 8px;'
+                f'box-shadow:var(--vs-shadow);white-space:nowrap">'
+                f'<span style="background:{sb};color:{sc};font-size:0.72rem;font-weight:700;'
+                f'border-radius:12px;padding:2px 7px;letter-spacing:0.02em">{score_txt}</span>'
+                f'<span style="font-size:0.85rem;font-weight:600;color:var(--vs-navy)">{tkr}</span>'
+                f'<span style="font-size:0.78rem;color:var(--vs-ink-soft)">{name[:28]}</span>'
+                f'</div>'
+            )
+        chips_html += '</div>'
+        st.markdown(chips_html, unsafe_allow_html=True)
 
     st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
 
@@ -1879,51 +1929,40 @@ def page_home():
     briefing = load_briefing()
 
     if signals or briefing:
-        st.markdown('<div class="section-header">Briefing</div>', unsafe_allow_html=True)
+        _nav_heading("Briefing", "briefing", "Alerts, signals and market summary")
 
-    # Headline
-    if briefing and briefing.get("headline"):
-        st.markdown(
-            f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);'
-            f'border-left:3px solid var(--vs-gold);border-radius:10px;'
-            f'padding:14px 20px;margin-bottom:14px;font-size:0.9rem;'
-            f'color:var(--vs-ink-mid);line-height:1.65;box-shadow:var(--vs-shadow)">'
-            f'<b style="color:var(--vs-navy);display:block;margin-bottom:4px">Today\'s summary</b>'
-            f'{briefing["headline"]}</div>',
-            unsafe_allow_html=True,
-        )
-
-    # High-priority signal cards (max 3)
-    high_sigs = [s for s in signals if s.get("severity") == "high"][:3]
-    if high_sigs:
-        st.markdown('<div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;'
-                    'letter-spacing:0.12em;color:var(--vs-ink-soft);margin-bottom:8px">'
-                    'High-priority alerts</div>', unsafe_allow_html=True)
-        for sig in high_sigs:
-            col = _severity_colour(sig.get("severity", "high"))
+        # Compact headline callout
+        if briefing and briefing.get("headline"):
             st.markdown(
-                f'<div style="border-left:3px solid {col};padding:10px 14px;margin-bottom:8px;'
-                f'background:var(--vs-bg-raised);border-radius:6px;border:1px solid var(--vs-rule)">'
-                f'<b style="color:var(--vs-navy);font-size:0.88rem">{sig.get("title","")}</b><br>'
-                f'<span style="color:var(--vs-ink-mid);font-size:0.83rem">{sig.get("detail","")}</span>'
-                f'</div>',
+                f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);'
+                f'border-left:3px solid var(--vs-gold);border-radius:10px;'
+                f'padding:12px 18px;margin-top:10px;margin-bottom:10px;font-size:0.88rem;'
+                f'color:var(--vs-ink-mid);line-height:1.6;box-shadow:var(--vs-shadow)">'
+                f'{briefing["headline"]}</div>',
                 unsafe_allow_html=True,
             )
 
-    # All signals summary count + link
-    if signals:
-        med_count = sum(1 for s in signals if s.get("severity") == "medium")
-        low_count = sum(1 for s in signals if s.get("severity") in ("low", "info"))
-        parts = []
-        if high_sigs:        parts.append(f"{len(high_sigs)} high")
-        if med_count:        parts.append(f"{med_count} medium")
-        if low_count:        parts.append(f"{low_count} low/info")
-        summary_txt = " · ".join(parts) if parts else f"{len(signals)} signals"
-        c_sig, _ = st.columns([2, 3])
-        with c_sig:
-            if st.button(f"→  Full briefing ({summary_txt})", key="home_goto_briefing"):
-                st.session_state.page = "briefing"
-                st.rerun()
+        # Compact alert-count badge row
+        if signals:
+            high_count  = sum(1 for s in signals if s.get("severity") == "high")
+            med_count   = sum(1 for s in signals if s.get("severity") == "medium")
+            low_count   = sum(1 for s in signals if s.get("severity") in ("low", "info"))
+            badge_items = [
+                (high_count, "#8B2635", "#FAECEE", "High"),
+                (med_count,  "#9B6B1A", "#FBF3E4", "Medium"),
+                (low_count,  "#2A6B44", "#D6EDDF", "Low / Info"),
+            ]
+            badges_html = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">'
+            for count, colour, bg, label in badge_items:
+                if count:
+                    badges_html += (
+                        f'<span style="background:{bg};color:{colour};font-size:0.78rem;'
+                        f'font-weight:600;border-radius:12px;padding:3px 11px;'
+                        f'border:1px solid {colour}22">'
+                        f'{count} {label}</span>'
+                    )
+            badges_html += '</div>'
+            st.markdown(badges_html, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
