@@ -777,6 +777,8 @@ def _init_state():
         st.session_state.sector_medians = {}
     if "watchlist" not in st.session_state:
         st.session_state.watchlist = _load_json("watchlist.json", [])
+    if "holdings" not in st.session_state:
+        st.session_state.holdings = _load_json("holdings.json", [])
     if "prefs" not in st.session_state:
         st.session_state.prefs = _load_json("prefs.json", {
             # Display filters
@@ -820,6 +822,10 @@ def _init_state():
         st.session_state.show_flagged_only = False  # filter to signal-flagged instruments only
     if "wl_search_result" not in st.session_state:
         st.session_state.wl_search_result = None    # dict or "not_found" or "error:<msg>"
+    if "dd_search_result" not in st.session_state:
+        st.session_state.dd_search_result = None    # deepdive search result
+    if "dd_add_target" not in st.session_state:
+        st.session_state.dd_add_target = "holdings" # "holdings" or "watchlist"
     if "wl_refreshing" not in st.session_state:
         st.session_state.wl_refreshing = set()      # tickers currently being refreshed
     if "da_extra" not in st.session_state:
@@ -1148,19 +1154,18 @@ with st.sidebar:
     st.divider()
 
     # ── Navigation ──────────────────────────────────────────────────────────
-    _latest_signals = load_latest_signals()
-    _high_count = sum(1 for s in _latest_signals if s.get("severity") == "high")
-    _signals_label = f"Signals  ·  {_high_count} new" if _high_count > 0 else "Signals"
+    _latest_signals  = load_latest_signals()
+    _high_count      = sum(1 for s in _latest_signals if s.get("severity") == "high")
     _scoring_changed = st.session_state.scoring_changed
     _settings_label  = "Settings  ●" if _scoring_changed else "Settings"
+    _briefing_label  = f"Briefing  ·  {_high_count} alerts" if _high_count > 0 else "Briefing"
 
     pages = {
-        "Dashboard":       "home",
+        "Home":            "home",
+        "Deepdive":        "deepdive",
         "Screen":          "screener",
-        "Holdings":        "watchlist",
         "Compare":         "compare",
-        _signals_label:    "signals",
-        "Briefing":        "briefing",
+        _briefing_label:   "briefing",
         _settings_label:   "settings",
     }
     for label, key in pages.items():
@@ -1659,47 +1664,36 @@ def render_card(inst: dict, show_add_watchlist=True):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE: HOME / DASHBOARD
+# PAGE: HOME
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _home_summary_tile(col, num, label, colour="var(--vs-navy)"):
+    with col:
+        st.markdown(
+            f'<div class="summary-tile">'
+            f'<div class="summary-number" style="color:{colour}">{num}</div>'
+            f'<div class="summary-label">{label}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
 
 def page_home():
     _render_counter.clear()
-    st.markdown("# Dashboard")
+    st.markdown("# Home")
 
     instruments = st.session_state.instruments
+    ok          = [x for x in instruments if x.get("ok")] if instruments else []
+    live        = {x["ticker"]: x for x in ok}
+    holdings    = st.session_state.holdings
+    watchlist   = st.session_state.watchlist
     age         = cache_age_hours()
 
-    # ── Empty state ────────────────────────────────────────────────────────────
-    if not instruments:
-        st.markdown(
-            '<div style="text-align:center;padding:80px 20px;color:var(--vs-ink-soft)">'
-            '<div style="width:40px;height:2px;background:var(--vs-gold);margin:0 auto 28px auto;border-radius:2px"></div>'
-            '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:1.5rem;font-weight:700;'
-            'color:var(--vs-navy);margin-bottom:10px;letter-spacing:-0.01em">Welcome to Value Screener</div>'
-            '<div style="font-family:\'Inter\',sans-serif;font-size:0.9rem;line-height:1.7;'
-            'max-width:400px;margin:0 auto 28px auto;color:var(--vs-ink-mid)">'
-            'Choose your markets in the sidebar, then click <b style="color:var(--vs-ink);font-weight:600">Load Data</b>.<br>'
-            'Prices refresh automatically at each market open and close.'
-            '</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        return
-
-    # ── Summary tiles ──────────────────────────────────────────────────────────
-    ok           = [x for x in instruments if x.get("ok")]
-    stocks       = [x for x in ok if x.get("asset_class") == "Stock"]
-    quality_pass = [x for x in stocks if x.get("quality_passes")]
-    strong_value = [x for x in ok if (_f(x.get("score")) or 0) >= 75]
-    wl_count     = len(st.session_state.watchlist)
-    flagged      = [x for x in ok if x.get("has_signals")]
-
+    # ── Status caption ────────────────────────────────────────────────────────
     if age is not None:
-        age_str = ("🟢 Live" if age < 1 else
-                   f"🟡 {age:.0f}h old" if age < 8 else
-                   f"🔴 Stale — {age:.0f}h old")
+        age_str = ("Live" if age < 1 else f"{age:.0f}h old" if age < 8 else f"Stale — {age:.0f}h")
     else:
-        age_str = "⬜ Cache"
+        age_str = "No data"
     last_surv = get_last_run_time()
     surv_str  = ""
     if last_surv:
@@ -1708,105 +1702,227 @@ def page_home():
             surv_str = f"  ·  Surveillance {surv_dt.strftime('%H:%M %d %b')}"
         except Exception:
             pass
-    next_ev = _next_market_event()
+    next_ev  = _next_market_event()
     next_str = f"  ·  {next_ev}" if next_ev else ""
     st.caption(f"{age_str}{surv_str}{next_str}  ·  {datetime.now().strftime('%A %d %B %Y')}")
-    st.markdown('<div style="height:0.5rem"></div>', unsafe_allow_html=True)
 
-    # ── Macro status bar ──────────────────────────────────────────────────────
-    _render_macro_bar()
-
-    st.markdown('<div style="height:0.25rem"></div>', unsafe_allow_html=True)
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    flagged_col = "var(--vs-amber)" if flagged else "var(--vs-navy)"
-    tiles = [
-        (c1, str(len(ok)),            "Instruments screened",       "var(--vs-navy)"),
-        (c2, str(len(strong_value)),  "Strong value signals",       "var(--vs-green)"),
-        (c3, str(len(quality_pass)),  "Stocks passing quality",     "var(--vs-navy)"),
-        (c4, str(wl_count),           "On your watchlist",          "var(--vs-navy)"),
-        (c5, str(len(flagged)),       "Flagged by surveillance",    flagged_col),
-    ]
-    for col, num, lbl, num_colour in tiles:
-        with col:
-            st.markdown(
-                f'<div class="summary-tile">'
-                f'<div class="summary-number" style="color:{num_colour}">{num}</div>'
-                f'<div class="summary-label">{lbl}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-    st.markdown('<div style="height:1.2rem"></div>', unsafe_allow_html=True)
-
-    # ── Changed since last scan ────────────────────────────────────────────────
-    changed = get_changed_instruments(ok, min_drift=8.0)
-    if changed:
-        st.markdown('<div class="section-header">Changed since last scan</div>', unsafe_allow_html=True)
-        lines = []
-        for inst in changed[:6]:
-            drift = inst.get("score_drift", 0)
-            name  = inst.get("name", inst.get("ticker", ""))
-            score = inst.get("score")
-            arrow = "▲" if drift > 0 else "▼"
-            col   = "var(--vs-green)" if drift > 0 else "var(--vs-red)"
-            score_str = f"{score:.0f}" if score is not None else "—"
-            lines.append(
-                f'<span style="margin-right:20px">'
-                f'<b style="color:var(--vs-ink)">{name}</b> '
-                f'<span style="color:{col}">{arrow} {abs(drift):.0f} pts</span> '
-                f'<span style="color:var(--vs-ink-soft)">→ {score_str}</span>'
-                f'</span>'
-            )
+    # ── Welcome / no-data state ───────────────────────────────────────────────
+    if not instruments:
         st.markdown(
-            '<div class="changed-banner">'
-            + "".join(lines) +
+            '<div style="text-align:center;padding:80px 20px">'
+            '<div style="width:40px;height:2px;background:var(--vs-gold);margin:0 auto 28px auto;border-radius:2px"></div>'
+            '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:1.5rem;font-weight:700;'
+            'color:var(--vs-navy);margin-bottom:10px;letter-spacing:-0.01em">Welcome to Value Screener</div>'
+            '<div style="font-size:0.9rem;line-height:1.7;max-width:420px;margin:0 auto;color:var(--vs-ink-mid)">'
+            'Choose your markets in the sidebar, then click '
+            '<b style="color:var(--vs-ink)">Load Data</b> to begin.'
+            '</div>'
             '</div>',
             unsafe_allow_html=True,
         )
-    elif last_surv:
+        return
+
+    # ── Macro bar ─────────────────────────────────────────────────────────────
+    _render_macro_bar()
+    st.markdown('<div style="height:0.75rem"></div>', unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 1 — YOUR HOLDINGS
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown('<div class="section-header">Your Holdings</div>', unsafe_allow_html=True)
+
+    if not holdings:
         st.markdown(
-            '<div class="changed-banner">✓ <b>Nothing material changed</b> since last surveillance run — all clear.</div>',
+            '<div class="changed-banner" style="text-align:center;color:var(--vs-ink-soft)">'
+            'No holdings yet — go to <b style="color:var(--vs-ink)">Deepdive</b> to add your positions.'
+            '</div>',
             unsafe_allow_html=True,
         )
+    else:
+        h_tickers = {h["ticker"]: h for h in holdings}
+        h_live    = [live[t] for t in h_tickers if t in live]
+        h_missing = [t for t in h_tickers if t not in live]
 
-    st.markdown('<div style="height:0.5rem"></div>', unsafe_allow_html=True)
+        if h_missing:
+            st.caption(f"{len(h_missing)} holding(s) have no live data — load their markets in the sidebar.")
 
-    # ── Top picks — 2 column layout ────────────────────────────────────────────
-    # FIX UX: 2 columns max so cards aren't cramped
-    top = sorted(
-        [x for x in ok if _f(x.get("score")) is not None],
+        if h_live:
+            # Summary tiles: total holdings, total with live scores, avg score
+            scored = [x for x in h_live if _f(x.get("score")) is not None]
+            avg_score = (sum(_f(x["score"]) for x in scored) / len(scored)) if scored else None
+            avg_str   = f"{avg_score:.0f}" if avg_score is not None else "—"
+
+            tc1, tc2, tc3, tc4 = st.columns(4)
+            _home_summary_tile(tc1, str(len(holdings)),  "Holdings")
+            _home_summary_tile(tc2, str(len(h_live)),    "With live data")
+            _home_summary_tile(tc3, avg_str,             "Avg value score",
+                               "var(--vs-green)" if avg_score and avg_score >= 65 else
+                               "var(--vs-amber)" if avg_score and avg_score >= 45 else "var(--vs-navy)")
+            # Total gain/loss across holdings with price data
+            gains = []
+            for inst in h_live:
+                t     = inst["ticker"]
+                added = _f(h_tickers[t].get("price_when_added"))
+                price = _f(inst.get("price"))
+                if added and price and added > 0:
+                    gains.append((price / added - 1) * 100)
+            if gains:
+                avg_gain = sum(gains) / len(gains)
+                gain_str = f"{'+' if avg_gain >= 0 else ''}{avg_gain:.1f}%"
+                gain_col = "var(--vs-green)" if avg_gain >= 0 else "var(--vs-red)"
+                _home_summary_tile(tc4, gain_str, "Avg return since added", gain_col)
+            else:
+                _home_summary_tile(tc4, "—", "Avg return since added")
+
+            st.markdown('<div style="height:0.75rem"></div>', unsafe_allow_html=True)
+
+            # Cards — 2 per row
+            h_sorted = sorted(h_live, key=lambda x: _f(x.get("score")) or 0, reverse=True)
+            pairs    = [h_sorted[i:i+2] for i in range(0, len(h_sorted), 2)]
+            for pair in pairs:
+                cols = st.columns(2)
+                for j, inst in enumerate(pair):
+                    with cols[j]:
+                        render_card(inst, show_add_watchlist=False)
+
+            if len(holdings) > len(h_live):
+                st.caption(f"{len(holdings) - len(h_live)} holding(s) not shown — data not loaded.")
+
+        if st.button("→  Manage holdings", key="home_goto_holdings"):
+            st.session_state.page = "deepdive"
+            st.rerun()
+
+    st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 2 — WATCHLIST
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown('<div class="section-header">Watchlist</div>', unsafe_allow_html=True)
+
+    if not watchlist:
+        st.markdown(
+            '<div class="changed-banner" style="text-align:center;color:var(--vs-ink-soft)">'
+            'Nothing on your watchlist yet — go to <b style="color:var(--vs-ink)">Deepdive</b> to add instruments.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        wl_tickers = {w["ticker"]: w for w in watchlist}
+        wl_live    = [live[t] for t in wl_tickers if t in live]
+        wl_missing = [t for t in wl_tickers if t not in live]
+
+        if wl_missing:
+            st.caption(f"{len(wl_missing)} watchlist item(s) have no live data — load their markets in the sidebar.")
+
+        if wl_live:
+            scored_wl   = [x for x in wl_live if _f(x.get("score")) is not None]
+            best_wl     = sorted(scored_wl, key=lambda x: _f(x.get("score")) or 0, reverse=True)
+            flagged_wl  = [x for x in wl_live if x.get("has_signals")]
+            avg_wl      = (sum(_f(x["score"]) for x in scored_wl) / len(scored_wl)) if scored_wl else None
+            avg_wl_str  = f"{avg_wl:.0f}" if avg_wl is not None else "—"
+
+            wc1, wc2, wc3, wc4 = st.columns(4)
+            _home_summary_tile(wc1, str(len(watchlist)),    "Watching")
+            _home_summary_tile(wc2, str(len(wl_live)),      "With live data")
+            _home_summary_tile(wc3, avg_wl_str,             "Avg value score",
+                               "var(--vs-green)" if avg_wl and avg_wl >= 65 else
+                               "var(--vs-amber)" if avg_wl and avg_wl >= 45 else "var(--vs-navy)")
+            _home_summary_tile(wc4, str(len(flagged_wl)),   "Flagged",
+                               "var(--vs-amber)" if flagged_wl else "var(--vs-navy)")
+
+            st.markdown('<div style="height:0.75rem"></div>', unsafe_allow_html=True)
+
+            # Show top 4 watchlist items as cards
+            pairs = [best_wl[:4][i:i+2] for i in range(0, min(4, len(best_wl)), 2)]
+            for pair in pairs:
+                cols = st.columns(2)
+                for j, inst in enumerate(pair):
+                    with cols[j]:
+                        render_card(inst, show_add_watchlist=False)
+
+            if len(wl_live) > 4:
+                if st.button(f"→  See all {len(wl_live)} watchlist items", key="home_goto_wl"):
+                    st.session_state.page = "deepdive"
+                    st.rerun()
+
+    st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 3 — RADAR (top picks not already held or watched)
+    # ══════════════════════════════════════════════════════════════════════════
+    known_tickers = (
+        {h["ticker"] for h in holdings} |
+        {w["ticker"] for w in watchlist}
+    )
+    radar = sorted(
+        [x for x in ok
+         if x["ticker"] not in known_tickers and _f(x.get("score")) is not None],
         key=lambda x: _f(x.get("score")) or 0, reverse=True
     )[:4]
 
-    if top:
-        st.markdown('<div class="section-header">Top value picks right now</div>', unsafe_allow_html=True)
-        pairs = [top[i:i+2] for i in range(0, len(top), 2)]
+    if radar:
+        st.markdown('<div class="section-header">Radar — top picks not yet held or watched</div>',
+                    unsafe_allow_html=True)
+        pairs = [radar[i:i+2] for i in range(0, len(radar), 2)]
         for pair in pairs:
             cols = st.columns(2)
             for j, inst in enumerate(pair):
                 with cols[j]:
                     render_card(inst, show_add_watchlist=True)
 
-    # ── Watchlist snapshot ─────────────────────────────────────────────────────
-    if st.session_state.watchlist and instruments:
-        st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="section-header">Your watchlist — latest readings</div>',
-                    unsafe_allow_html=True)
-        wl_tickers  = {w["ticker"] for w in st.session_state.watchlist}
-        wl_insts    = [x for x in ok if x["ticker"] in wl_tickers]
-        wl_sorted   = sorted(wl_insts, key=lambda x: _f(x.get("score")) or 0, reverse=True)
+    st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
 
-        pairs = [wl_sorted[:2][i:i+2] for i in range(0, len(wl_sorted[:2]), 2)]
-        for pair in pairs:
-            cols = st.columns(2)
-            for j, inst in enumerate(pair):
-                with cols[j]:
-                    render_card(inst, show_add_watchlist=False)
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 4 — BRIEFING SNAPSHOT
+    # ══════════════════════════════════════════════════════════════════════════
+    signals  = load_latest_signals()
+    briefing = load_briefing()
 
-        if len(wl_sorted) > 2:
-            if st.button(f"→  See all {len(wl_sorted)} watchlist items", key="goto_wl"):
-                st.session_state.page = "watchlist"
+    if signals or briefing:
+        st.markdown('<div class="section-header">Briefing</div>', unsafe_allow_html=True)
+
+    # Headline
+    if briefing and briefing.get("headline"):
+        st.markdown(
+            f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);'
+            f'border-left:3px solid var(--vs-gold);border-radius:10px;'
+            f'padding:14px 20px;margin-bottom:14px;font-size:0.9rem;'
+            f'color:var(--vs-ink-mid);line-height:1.65;box-shadow:var(--vs-shadow)">'
+            f'<b style="color:var(--vs-navy);display:block;margin-bottom:4px">Today\'s summary</b>'
+            f'{briefing["headline"]}</div>',
+            unsafe_allow_html=True,
+        )
+
+    # High-priority signal cards (max 3)
+    high_sigs = [s for s in signals if s.get("severity") == "high"][:3]
+    if high_sigs:
+        st.markdown('<div style="font-size:0.72rem;font-weight:600;text-transform:uppercase;'
+                    'letter-spacing:0.12em;color:var(--vs-ink-soft);margin-bottom:8px">'
+                    'High-priority alerts</div>', unsafe_allow_html=True)
+        for sig in high_sigs:
+            col = _severity_colour(sig.get("severity", "high"))
+            st.markdown(
+                f'<div style="border-left:3px solid {col};padding:10px 14px;margin-bottom:8px;'
+                f'background:var(--vs-bg-raised);border-radius:6px;border:1px solid var(--vs-rule)">'
+                f'<b style="color:var(--vs-navy);font-size:0.88rem">{sig.get("title","")}</b><br>'
+                f'<span style="color:var(--vs-ink-mid);font-size:0.83rem">{sig.get("detail","")}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    # All signals summary count + link
+    if signals:
+        med_count = sum(1 for s in signals if s.get("severity") == "medium")
+        low_count = sum(1 for s in signals if s.get("severity") in ("low", "info"))
+        parts = []
+        if high_sigs:        parts.append(f"{len(high_sigs)} high")
+        if med_count:        parts.append(f"{med_count} medium")
+        if low_count:        parts.append(f"{low_count} low/info")
+        summary_txt = " · ".join(parts) if parts else f"{len(signals)} signals"
+        c_sig, _ = st.columns([2, 3])
+        with c_sig:
+            if st.button(f"→  Full briefing ({summary_txt})", key="home_goto_briefing"):
+                st.session_state.page = "briefing"
                 st.rerun()
 
 
@@ -2422,158 +2538,371 @@ def _refresh_single_ticker(wl_entry: dict):
     st.session_state.toast = (f"{name} refreshed with live data", "success")
 
 
-# PAGE: WATCHLIST (My Holdings)
+# PAGE: DEEPDIVE
 # ══════════════════════════════════════════════════════════════════════════════
 
-def page_watchlist():
-    _render_counter.clear()
-    st.markdown("# Holdings")
+def _render_instrument_expander(entry: dict, list_key: str, live_data: dict,
+                                 expander_prefix: str = ""):
+    """
+    Render one expander row for an instrument in either Holdings or Watchlist.
+    list_key: "holdings" or "watchlist"  — used for state key namespacing.
+    """
+    ticker      = entry["ticker"]
+    added_price = _f(entry.get("price_when_added"))
 
-    # ── Search & Add any instrument ───────────────────────────────────────────
-    st.markdown('<div class="section-header">Add to holdings</div>', unsafe_allow_html=True)
-    st.caption("Enter a ticker (e.g. NVDA, HSBA.L, SIE.DE) or company name to search and add.")
-
-    search_col, btn_col = st.columns([4, 1])
-    with search_col:
-        search_query = st.text_input(
-            "Ticker or company name",
-            key="wl_search_input",
-            placeholder="e.g. AAPL, TSLA, HSBA.L, SIE.DE …",
-            label_visibility="collapsed",
-        )
-    with btn_col:
-        search_clicked = st.button("Search", key="wl_search_btn", use_container_width=True)
-
-    if search_clicked and search_query.strip():
-        _do_watchlist_search(search_query.strip())
-
-    # Show pending search result if one exists
-    if st.session_state.get("wl_search_result"):
-        _render_search_result()
-
-    st.markdown("---")
-
-    watchlist = st.session_state.watchlist
-    if not watchlist:
-        st.markdown(
-            '<div style="text-align:center;padding:60px 20px">'
-            '<div style="width:32px;height:1px;background:var(--vs-rule);margin:0 auto 24px auto"></div>'
-            '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:1.2rem;font-weight:600;'
-            'color:var(--vs-navy);margin-bottom:8px">Your holdings list is empty</div>'
-            '<div style="font-size:0.85rem;color:var(--vs-ink-mid);max-width:360px;margin:0 auto">'
-            'Use <b style="color:var(--vs-ink)">Search</b> above to find any stock, ETF, or fund and add it here. '
-            'Or go to <b style="color:var(--vs-ink)">Screen</b> and click <b style="color:var(--vs-ink)">+ Watchlist</b> on any instrument.</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+    if ticker not in live_data:
+        with st.expander(
+            f"{entry.get('name', ticker)} ({ticker}) — no data loaded", expanded=False
+        ):
+            st.caption(
+                f"Load {entry.get('group','the relevant market')} in the sidebar, "
+                f"or fetch this instrument individually:"
+            )
+            miss_c1, miss_c2 = st.columns(2)
+            with miss_c1:
+                if st.button("Fetch now", key=f"dd_fetch_{list_key}_{ticker}",
+                             use_container_width=True):
+                    _refresh_single_ticker(entry)
+                    st.rerun()
+            with miss_c2:
+                if st.button("Remove", key=f"dd_rm_miss_{list_key}_{ticker}",
+                             use_container_width=True):
+                    lst = getattr(st.session_state, list_key)
+                    setattr(st.session_state, list_key,
+                            [x for x in lst if x["ticker"] != ticker])
+                    _save_json(f"{list_key}.json", getattr(st.session_state, list_key))
+                    st.rerun()
         return
 
+    inst  = live_data[ticker]
+    score = _f(inst.get("score"))
+    label = score_label(score) if inst.get("quality_passes", True) else "Not scored"
+    price = _f(inst.get("price"))
+
+    change_str = ""
+    if price and added_price and added_price > 0:
+        chg    = (price / added_price - 1) * 100
+        sign   = "+" if chg >= 0 else ""
+        colour = "var(--vs-green)" if chg >= 0 else "var(--vs-red)"
+        change_str = (
+            f'<span style="color:{colour};font-weight:600">{sign}{chg:.1f}% since added</span>'
+        )
+
+    header = (
+        f"{inst['name']} ({ticker})  ·  {score:.0f}/100 — {label}"
+        if score is not None
+        else f"{inst['name']} ({ticker})"
+    )
+
+    with st.expander(header, expanded=False):
+        render_card(inst, show_add_watchlist=False)
+
+        mc1, mc2, mc3 = st.columns(3)
+        mc1.markdown(f"**Added:** {entry.get('added_at', '—')}")
+        if added_price:
+            mc2.markdown(
+                f"**Price when added:** {inst.get('currency', '')} {added_price:,.2f}"
+            )
+        if change_str:
+            mc3.markdown(change_str, unsafe_allow_html=True)
+
+        notes = st.text_area(
+            "Notes",
+            value=entry.get("notes", ""),
+            key=f"dd_notes_{list_key}_{ticker}",
+            label_visibility="collapsed",
+            placeholder="Add your research notes here…",
+        )
+        if notes != entry.get("notes", ""):
+            lst = getattr(st.session_state, list_key)
+            for item in lst:
+                if item["ticker"] == ticker:
+                    item["notes"] = notes
+            _save_json(f"{list_key}.json", lst)
+
+        btn_c1, btn_c2 = st.columns(2)
+        with btn_c1:
+            if st.button("Refresh data", key=f"dd_refresh_{list_key}_{ticker}",
+                         use_container_width=True):
+                _refresh_single_ticker(entry)
+                st.rerun()
+        with btn_c2:
+            remove_label = "Remove from holdings" if list_key == "holdings" else "Remove from watchlist"
+            if st.button(remove_label, key=f"dd_remove_{list_key}_{ticker}",
+                         use_container_width=True):
+                lst = getattr(st.session_state, list_key)
+                setattr(st.session_state, list_key,
+                        [x for x in lst if x["ticker"] != ticker])
+                _save_json(f"{list_key}.json", getattr(st.session_state, list_key))
+                st.session_state.toast = (f"Removed {inst['name']}", "info")
+                st.rerun()
+
+        _render_deep_analysis(inst)
+
+
+def _render_dd_search_result(target: str):
+    """
+    Render the Deepdive search result with Add to Holdings / Add to Watchlist buttons.
+    target: "holdings" or "watchlist"
+    """
+    result = st.session_state.dd_search_result
+
+    if result == "not_found":
+        st.warning("No instrument found — try the exact ticker symbol (e.g. AAPL, HSBA.L).")
+        if st.button("Clear", key="dd_sr_clear_notfound"):
+            st.session_state.dd_search_result = None
+            st.rerun()
+        return
+
+    if isinstance(result, str) and result.startswith("error:"):
+        st.error(f"Lookup failed: {result[6:]}. Check the ticker and try again.")
+        if st.button("Clear", key="dd_sr_clear_error"):
+            st.session_state.dd_search_result = None
+            st.rerun()
+        return
+
+    if not isinstance(result, dict):
+        return
+
+    ticker    = result["ticker"]
+    name      = result["name"]
+    currency  = result.get("currency", "")
+    price     = _f(result.get("price"))
+    pe        = _f(result.get("pe"))
+    pb        = _f(result.get("pb"))
+    div_yield = _f(result.get("div_yield"))
+    yr1_ret   = _f(result.get("yr1_pct"))
+    sector    = result.get("sector", "—")
+    group     = result.get("group", "—")
+    mktcap    = _f(result.get("market_cap"))
+
+    in_holdings = ticker in {h["ticker"] for h in st.session_state.holdings}
+    in_watchlist = ticker in {w["ticker"] for w in st.session_state.watchlist}
+
+    pe_span    = (f'<span><b style="color:var(--vs-ink)">P/E</b> {pe:.1f}x</span>' if pe else '')
+    pb_span    = (f'<span><b style="color:var(--vs-ink)">P/B</b> {pb:.1f}x</span>' if pb else '')
+    yield_span = (f'<span><b style="color:var(--vs-ink)">Yield</b> {div_yield:.2f}%</span>' if div_yield else '')
+    ret_span   = (f'<span><b style="color:var(--vs-ink)">1yr</b> {_fmt_pct(yr1_ret)}</span>' if yr1_ret is not None else '')
+    cap_span   = (f'<span><b style="color:var(--vs-ink)">Mkt cap</b> {_fmt_aum(mktcap)}</span>' if mktcap else '')
+    price_disp = _fmt_price(price, currency + ' ') if price else '—'
+
+    st.markdown(
+        f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);border-radius:12px;'
+        f'padding:18px 22px;margin-bottom:14px;box-shadow:var(--vs-shadow)">'
+        f'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        f'<div>'
+        f'<span style="font-size:1.05rem;font-weight:600;color:var(--vs-navy)">{name}</span>'
+        f'<span style="font-size:0.82rem;color:var(--vs-ink-soft);margin-left:10px">{ticker}</span>'
+        f'<span style="font-size:0.72rem;background:var(--vs-bg-subtle);color:var(--vs-ink-mid);'
+        f'border:1px solid var(--vs-rule);border-radius:4px;padding:2px 8px;margin-left:8px">{group}</span>'
+        f'</div>'
+        f'<div style="font-size:1rem;font-weight:600;color:var(--vs-navy)">{price_disp}</div>'
+        f'</div>'
+        f'<div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:0.82rem;color:var(--vs-ink-mid)">'
+        f'<span><b style="color:var(--vs-ink)">Sector</b> {sector}</span>'
+        f'{pe_span}{pb_span}{yield_span}{ret_span}{cap_span}'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    entry = {
+        "ticker":           ticker,
+        "name":             name,
+        "group":            group,
+        "asset_class":      result.get("asset_class", "Stock"),
+        "price_when_added": price,
+        "added_at":         datetime.now().strftime("%Y-%m-%d"),
+        "notes":            "",
+    }
+
+    a1, a2, a3 = st.columns([2, 2, 1])
+    with a1:
+        if in_holdings:
+            st.success("✓ Already in holdings")
+        else:
+            if st.button(f"Add to Holdings", key="dd_add_holdings",
+                         use_container_width=True, type="primary"):
+                st.session_state.holdings.append(entry)
+                _save_json("holdings.json", st.session_state.holdings)
+                st.session_state.toast = (f"{name} added to holdings", "success")
+                st.session_state.dd_search_result = None
+                st.rerun()
+    with a2:
+        if in_watchlist:
+            st.success("✓ Already on watchlist")
+        else:
+            if st.button(f"Add to Watchlist", key="dd_add_watchlist",
+                         use_container_width=True):
+                st.session_state.watchlist.append(entry)
+                _save_json("watchlist.json", st.session_state.watchlist)
+                st.session_state.toast = (f"{name} added to watchlist", "success")
+                st.session_state.dd_search_result = None
+                st.rerun()
+    with a3:
+        if st.button("Clear", key="dd_sr_clear", use_container_width=True):
+            st.session_state.dd_search_result = None
+            st.rerun()
+
+
+def page_deepdive():
+    _render_counter.clear()
+    st.markdown("# Deepdive")
+
     instruments = st.session_state.instruments
-    wl_tickers  = {w["ticker"]: w for w in watchlist}
     live_data   = {
         x["ticker"]: x
         for x in instruments
-        if x.get("ok") and x["ticker"] in wl_tickers
-    }
+        if x.get("ok")
+    } if instruments else {}
 
-    # FIX UX: improved missing-data message tells user exactly what to do
-    missing = [t for t in wl_tickers if t not in live_data]
-    if missing:
-        missing_groups = {wl_tickers[t].get("group", "that market") for t in missing}
-        st.info(
-            f"{len(missing)} watchlist item(s) have no live data. "
-            f"To see them, load **{', '.join(missing_groups)}** from the sidebar."
+    # ══════════════════════════════════════════════════════════════════════════
+    # SEARCH — shared between both sections
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown('<div class="section-header">Search & Add</div>', unsafe_allow_html=True)
+    st.caption("Enter a ticker (e.g. NVDA, HSBA.L, SIE.DE) or company name, then choose where to add it.")
+
+    srch_col, btn_col = st.columns([4, 1])
+    with srch_col:
+        search_query = st.text_input(
+            "Search",
+            key="dd_search_input",
+            placeholder="e.g. AAPL, HSBA.L, iShares Core FTSE 100…",
+            label_visibility="collapsed",
         )
+    with btn_col:
+        search_clicked = st.button("Search", key="dd_search_btn", use_container_width=True,
+                                   type="primary")
 
-    for wl_entry in watchlist:
-        ticker      = wl_entry["ticker"]
-        added_price = _f(wl_entry.get("price_when_added"))
+    if search_clicked and search_query.strip():
+        with st.spinner(f"Looking up {search_query.strip()} …"):
+            # Reuse the existing watchlist search logic but store in dd_search_result
+            import yfinance as yf
+            from data.fetcher import _float as _ff
+            query  = search_query.strip()
+            ticker = query.upper().strip()
+            try:
+                t    = yf.Ticker(ticker)
+                info = t.info or {}
+                name = info.get("longName") or info.get("shortName") or info.get("name")
+                if not name:
+                    try:
+                        results = yf.Search(query, max_results=5)
+                        quotes  = getattr(results, "quotes", []) or []
+                        if quotes:
+                            best   = quotes[0]
+                            ticker = best.get("symbol", ticker)
+                            name   = best.get("longname") or best.get("shortname") or ticker
+                            t      = yf.Ticker(ticker)
+                            info   = t.info or {}
+                    except Exception:
+                        pass
+                if not name:
+                    st.session_state.dd_search_result = "not_found"
+                else:
+                    qt = info.get("quoteType", "").upper()
+                    asset_class = ("ETF" if qt in ("ETF", "MUTUALFUND")
+                                   else "Stock" if qt == "EQUITY"
+                                   else qt.title() or "Unknown")
+                    if ticker.endswith(".L"):
+                        group = "🇬🇧 UK Stocks"
+                    elif ticker.endswith((".DE", ".PA", ".AS", ".MC", ".MI",
+                                         ".SW", ".ST", ".CO", ".HE", ".OL")):
+                        group = "🇪🇺 EU Stocks"
+                    elif asset_class == "ETF":
+                        group = "📦 ETFs & Index Funds"
+                    else:
+                        group = "🇺🇸 US Stocks"
+                    div_raw   = _ff(info.get("dividendYield"))
+                    div_yield = None
+                    if div_raw is not None:
+                        div_yield = round(min(div_raw * 100 if div_raw <= 1.0 else div_raw, 99.0), 2)
+                    hist     = t.history(period="1y")
+                    price    = _ff(hist["Close"].iloc[-1]) if not hist.empty else None
+                    high_52w = _ff(hist["Close"].max())    if not hist.empty else None
+                    low_52w  = _ff(hist["Close"].min())    if not hist.empty else None
+                    yr1_ret  = None
+                    if not hist.empty and len(hist) > 10:
+                        yr1_ret = round((hist["Close"].iloc[-1] / hist["Close"].iloc[0] - 1) * 100, 1)
+                    st.session_state.dd_search_result = {
+                        "ticker": ticker, "name": name, "asset_class": asset_class,
+                        "group": group,
+                        "sector":    info.get("sector") or info.get("fundFamily") or "—",
+                        "currency":  info.get("currency", ""),
+                        "exchange":  info.get("exchange", ""),
+                        "price":     round(price, 2) if price else None,
+                        "high_52w":  round(high_52w, 2) if high_52w else None,
+                        "low_52w":   round(low_52w, 2)  if low_52w  else None,
+                        "yr1_pct":   yr1_ret,
+                        "pe":        _ff(info.get("trailingPE")),
+                        "pb":        _ff(info.get("priceToBook")),
+                        "div_yield": div_yield,
+                        "market_cap":_ff(info.get("marketCap")),
+                        "ok":        True,
+                    }
+            except Exception as exc:
+                st.session_state.dd_search_result = f"error:{exc}"
 
-        if ticker not in live_data:
-            with st.expander(f"{wl_entry.get('name', ticker)} ({ticker}) — no data loaded",
-                             expanded=False):
-                st.caption(f"Load {wl_entry.get('group', 'the relevant market')} in the sidebar to see all holdings, or fetch this one individually:")
-                miss_c1, miss_c2 = st.columns([2, 2])
-                with miss_c1:
-                    if st.button("🔄 Fetch now", key=f"refresh_miss_{ticker}",
-                                 use_container_width=True,
-                                 help="Fetch live data for this ticker only — no full reload needed"):
-                        _refresh_single_ticker(wl_entry)
-                        st.rerun()
-                with miss_c2:
-                    if st.button("Remove", key=f"rmwl_miss_{ticker}", use_container_width=True):
-                        st.session_state.watchlist = [
-                            w for w in st.session_state.watchlist if w["ticker"] != ticker
-                        ]
-                        _save_json("watchlist.json", st.session_state.watchlist)
-                        st.rerun()
-            continue
+    if st.session_state.dd_search_result:
+        _render_dd_search_result(st.session_state.dd_add_target)
 
-        inst   = live_data[ticker]
-        score  = _f(inst.get("score"))
-        label  = score_label(score) if inst.get("quality_passes", True) else "Not scored"
-        price  = _f(inst.get("price"))
+    st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
+    st.divider()
 
-        change_str = ""
-        if price and added_price and added_price > 0:
-            chg    = (price / added_price - 1) * 100
-            sign   = "+" if chg > 0 else ""
-            colour = "var(--vs-green)" if chg > 0 else "var(--vs-red)"
-            change_str = (
-                f'<span style="color:{colour};font-weight:600">'
-                f'{sign}{chg:.1f}% since added</span>'
-            )
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 1 — HOLDINGS
+    # ══════════════════════════════════════════════════════════════════════════
+    holdings = st.session_state.holdings
+    st.markdown("## Holdings")
+    st.caption("Instruments you own. Track performance against your entry price.")
 
-        header = (
-            f"{inst['name']} ({ticker})  ·  {score:.0f}/100 — {label}"
-            if score is not None
-            else f"{inst['name']} ({ticker})"
+    if not holdings:
+        st.markdown(
+            '<div class="changed-banner" style="color:var(--vs-ink-soft)">'
+            'No holdings yet — search above and click <b style="color:var(--vs-ink)">Add to Holdings</b>.'
+            '</div>',
+            unsafe_allow_html=True,
         )
-
-        with st.expander(header, expanded=False):
-            render_card(inst, show_add_watchlist=False)
-
-            mc1, mc2, mc3 = st.columns(3)
-            mc1.markdown(f"**Added:** {wl_entry.get('added_at', '—')}")
-            if added_price:
-                mc2.markdown(
-                    f"**Price when added:** {inst.get('currency','')} {added_price:,.2f}"
-                )
-            if change_str:
-                mc3.markdown(change_str, unsafe_allow_html=True)
-
-            notes = st.text_area(
-                "Notes",
-                value=wl_entry.get("notes", ""),
-                key=f"notes_{ticker}",
-                label_visibility="collapsed",
-                placeholder="Add your research notes here…",
+    else:
+        h_tickers = {h["ticker"]: h for h in holdings}
+        missing_h = [t for t in h_tickers if t not in live_data]
+        if missing_h:
+            miss_groups = {h_tickers[t].get("group", "that market") for t in missing_h}
+            st.info(
+                f"{len(missing_h)} holding(s) have no live data. "
+                f"Load **{', '.join(miss_groups)}** from the sidebar to see them."
             )
-            if notes != wl_entry.get("notes", ""):
-                for w in st.session_state.watchlist:
-                    if w["ticker"] == ticker:
-                        w["notes"] = notes
-                _save_json("watchlist.json", st.session_state.watchlist)
+        for entry in holdings:
+            _render_instrument_expander(entry, "holdings", live_data)
 
-            btn_c1, btn_c2 = st.columns([2, 2])
-            with btn_c1:
-                if st.button("🔄 Refresh data", key=f"refresh_{ticker}",
-                             use_container_width=True,
-                             help="Pull fresh data from Yahoo Finance for this stock only"):
-                    _refresh_single_ticker(wl_entry)
-                    st.rerun()
-            with btn_c2:
-                if st.button("Remove from watchlist", key=f"rm_{ticker}",
-                             use_container_width=True):
-                    st.session_state.watchlist = [
-                        w for w in st.session_state.watchlist if w["ticker"] != ticker
-                    ]
-                    _save_json("watchlist.json", st.session_state.watchlist)
-                    st.session_state.toast = (f"Removed {inst['name']} from watchlist", "info")
-                    st.rerun()
+    st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
+    st.divider()
 
-            # Deep qualitative analysis
-            _render_deep_analysis(inst)
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECTION 2 — WATCHLIST
+    # ══════════════════════════════════════════════════════════════════════════
+    watchlist = st.session_state.watchlist
+    st.markdown("## Watchlist")
+    st.caption("Instruments you are monitoring but do not currently hold.")
+
+    if not watchlist:
+        st.markdown(
+            '<div class="changed-banner" style="color:var(--vs-ink-soft)">'
+            'Nothing on your watchlist — search above and click <b style="color:var(--vs-ink)">Add to Watchlist</b>.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        wl_tickers = {w["ticker"]: w for w in watchlist}
+        missing_wl = [t for t in wl_tickers if t not in live_data]
+        if missing_wl:
+            miss_groups = {wl_tickers[t].get("group", "that market") for t in missing_wl}
+            st.info(
+                f"{len(missing_wl)} watchlist item(s) have no live data. "
+                f"Load **{', '.join(miss_groups)}** from the sidebar to see them."
+            )
+        for entry in watchlist:
+            _render_instrument_expander(entry, "watchlist", live_data)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2592,11 +2921,14 @@ def page_compare():
     ok      = [x for x in instruments if x.get("ok")]
     options = {f"{x['ticker']}  —  {x['name']}": x for x in ok}
 
-    # FIX UX: pre-populate with top 2 watchlist items if available
-    wl_tickers = [w["ticker"] for w in st.session_state.watchlist]
+    # Pre-populate with top 2 items from holdings then watchlist
+    known_tickers = (
+        [h["ticker"] for h in st.session_state.holdings] +
+        [w["ticker"] for w in st.session_state.watchlist]
+    )
     default_labels = [
         lbl for lbl in options
-        if lbl.split("  —  ")[0].strip() in wl_tickers
+        if lbl.split("  —  ")[0].strip() in known_tickers
     ][:2]
 
     selected_labels = st.multiselect(
@@ -2688,126 +3020,6 @@ def _type_label(t: str) -> str:
         "insider_buying":   "Insider Buy",
         "material_event":   "SEC Filing",
     }.get(t, t.replace("_", " ").title())
-
-
-def page_signals():
-    st.markdown("# Signals & Alerts")
-
-    signals = load_latest_signals()
-    last_run = get_last_run_time()
-
-    # ── Run surveillance button ────────────────────────────────────────────────
-    col_title, col_btn = st.columns([3, 1])
-    with col_title:
-        if last_run:
-            try:
-                dt = datetime.fromisoformat(last_run)
-                st.caption(f"Last surveillance run: {dt.strftime('%a %d %b %Y, %H:%M')}")
-            except Exception:
-                st.caption(f"Last run: {last_run}")
-        else:
-            st.caption("No surveillance run yet. Click Run Surveillance to generate signals.")
-
-    with col_btn:
-        if st.button("🚨  Run Surveillance", type="primary", use_container_width=True,
-                     key="run_surv_btn"):
-            with st.spinner("Running surveillance — this takes 2–5 minutes on first run…"):
-                try:
-                    import sys
-                    sys.path.insert(0, str(Path(__file__).parent))
-                    from surveillance.run_surveillance import run as _run_surveillance
-                    briefing = _run_surveillance(force=False, verbose=False)
-                    st.session_state.toast = (
-                        f"Surveillance complete — {len(load_latest_signals())} signals generated",
-                        "success"
-                    )
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Surveillance error: {e}")
-
-    if not signals:
-        st.info("""
-        **No signals yet.**  Click **Run Surveillance** above to:
-        - Fetch macro data (FRED, BoE)
-        - Pull RSS headlines and score sentiment
-        - Check SEC insider transactions
-        - Compare scores against your last scan
-        """)
-        return
-
-    # ── Summary pills ──────────────────────────────────────────────────────────
-    summary = signals_summary(signals)
-    counts  = summary.get("counts", {})
-    s1, s2, s3, s4 = st.columns(4)
-    for col, sev, label in [
-        (s1, "high",   "High Priority"),
-        (s2, "medium", "Medium"),
-        (s3, "low",    "Low / Positive"),
-        (s4, "info",   "Informational"),
-    ]:
-        n = counts.get(sev, 0)
-        col.markdown(
-            f'<div class="summary-tile">'
-            f'<div class="summary-number" style="color:{_severity_colour(sev)}">{n}</div>'
-            f'<div class="summary-label">{label}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
-
-    # ── Filter by severity ─────────────────────────────────────────────────────
-    filter_sev = st.radio(
-        "Filter by severity",
-        ["All", "High only", "High + Medium"],
-        horizontal=True, label_visibility="collapsed",
-        key="sig_filter",
-    )
-    filtered_signals = signals
-    if filter_sev == "High only":
-        filtered_signals = [s for s in signals if s.get("severity") == "high"]
-    elif filter_sev == "High + Medium":
-        filtered_signals = [s for s in signals if s.get("severity") in ("high", "medium")]
-
-    if not filtered_signals:
-        st.info("No signals at this severity level.")
-        return
-
-    st.markdown('<div style="height:0.5rem"></div>', unsafe_allow_html=True)
-
-    # ── Signal cards ───────────────────────────────────────────────────────────
-    for sig in filtered_signals:
-        sev    = sig.get("severity", "info")
-        stype  = sig.get("type", "")
-        ticker = sig.get("ticker", "")
-        col    = _severity_colour(sev)
-        icon   = _severity_icon(sev)
-        type_lbl = _type_label(stype)
-
-        source_str = f" · {sig['source']}" if sig.get("source") else ""
-        ticker_str = f" · {ticker}" if ticker else ""
-
-        st.markdown(
-            f'<div class="card" style="border-left:4px solid {col}">'
-            f'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
-            f'<div>'
-            f'<div class="card-title">{icon} {sig.get("title","")}</div>'
-            f'<div class="card-sub">{type_lbl}{ticker_str}{source_str}</div>'
-            f'</div>'
-            f'<div style="background:{col}22;border-radius:6px;padding:4px 10px;font-size:0.72rem;color:{col};white-space:nowrap">'
-            f'{sev.upper()}'
-            f'</div>'
-            f'</div>'
-            f'<div class="card-verdict" style="margin-top:10px">{sig.get("detail","")}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        # Link to filing if available
-        if sig.get("url"):
-            st.markdown(f"[View filing →]({sig['url']})", unsafe_allow_html=False)
-
-    st.caption(f"Showing {len(filtered_signals)} of {len(signals)} total signals")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3301,11 +3513,14 @@ def page_settings():
 page = st.session_state.page
 if   page == "home":      page_home()
 elif page == "screener":  page_screener()
-elif page == "watchlist": page_watchlist()
+elif page == "deepdive":  page_deepdive()
 elif page == "compare":   page_compare()
-elif page == "signals":   page_signals()
 elif page == "briefing":  page_briefing()
 elif page == "settings":  page_settings()
+elif page in ("watchlist", "signals"):
+    # Redirect legacy page keys
+    st.session_state.page = "deepdive"
+    st.rerun()
 else:
     st.session_state.page = "home"
     st.rerun()
