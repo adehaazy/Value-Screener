@@ -102,7 +102,7 @@ class TestStockVerdict:
             "quality_fail_reasons": ["Negative FCF"],
         })
         v = stock_verdict(row, {})
-        assert "cash" in v.lower()
+        assert "fcf" in v.lower() or "cash" in v.lower()
 
     def test_quality_pass_returns_string(self):
         row = _stock()

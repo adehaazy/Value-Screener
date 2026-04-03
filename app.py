@@ -72,24 +72,30 @@ def _check_login():
     # ── Centred login card ────────────────────────────────────────────────────
     st.markdown(
         '<style>'
+        '@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500&display=swap");'
+        'body,.stApp{background:#FAF8F5!important}'
         'header[data-testid="stHeader"]{display:none}'
         '[data-testid="stSidebar"]{display:none}'
-        '.login-wrap{display:flex;align-items:center;justify-content:center;min-height:80vh}'
-        '.login-card{background:#161b22;border:1px solid #30363d;border-radius:12px;'
-        'padding:2.5rem 2.5rem 2rem 2.5rem;width:100%;max-width:380px;text-align:center}'
-        '.login-title{font-size:1.6rem;font-weight:700;color:#e6edf3;margin-bottom:0.25rem}'
-        '.login-sub{font-size:0.85rem;color:#8b949e;margin-bottom:1.8rem}'
+        '.login-wrap{display:flex;align-items:center;justify-content:center;min-height:90vh;background:#FAF8F5}'
+        '.login-card{background:#FFFFFF;border:1px solid #E2DDD6;border-radius:14px;'
+        'padding:3rem 2.75rem 2.5rem 2.75rem;width:100%;max-width:400px;text-align:center;'
+        'box-shadow:0 4px 24px rgba(13,27,42,0.07)}'
+        '.login-rule{width:32px;height:2px;background:#B8924A;margin:0 auto 1.5rem auto;border-radius:2px}'
+        '.login-title{font-family:"Playfair Display",Georgia,serif;font-size:1.75rem;font-weight:700;'
+        'color:#0D1B2A;margin-bottom:0.3rem;letter-spacing:-0.01em}'
+        '.login-sub{font-family:"Inter",-apple-system,sans-serif;font-size:0.82rem;'
+        'color:#6B7D92;margin-bottom:0;letter-spacing:0.04em;text-transform:uppercase}'
         '</style>'
         '<div class="login-wrap"><div class="login-card">'
-        '<div class="login-title">📊 Value Screener</div>'
-        '<div class="login-sub">Quality · Fair Price · Long-term</div>'
+        '<div class="login-rule"></div>'
+        '<div class="login-title">Value Screener</div>'
+        '<div class="login-sub">Quality &middot; Fair Price &middot; Long-term</div>'
         '</div></div>',
         unsafe_allow_html=True,
     )
 
     with st.form("login_form"):
-        st.markdown("#### Sign in")
-        password = st.text_input("Password", type="password", placeholder="Enter password")
+        password = st.text_input("Password", type="password", placeholder="Enter your password")
         submitted = st.form_submit_button("Sign in", use_container_width=True, type="primary")
 
     if submitted:
@@ -107,96 +113,454 @@ if not _check_login():
 
 st.markdown("""
 <style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   VALUE SCREENER — Premium Editorial Finance Theme
+   Palette: cream canvas · deep navy · warm gold accent
+   Typography: Georgia / Times New Roman serif display + system sans UI
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Google Fonts import ── */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+/* ── CSS Custom Properties ── */
+:root {
+  --vs-bg:          #FAF8F5;
+  --vs-bg-subtle:   #F4F1EC;
+  --vs-bg-card:     #FFFFFF;
+  --vs-bg-raised:   #F7F5F1;
+  --vs-navy:        #0D1B2A;
+  --vs-navy-mid:    #1C2E42;
+  --vs-navy-soft:   #2C4460;
+  --vs-gold:        #B8924A;
+  --vs-gold-light:  #D4A96A;
+  --vs-gold-pale:   #F5ECD9;
+  --vs-ink:         #1A2332;
+  --vs-ink-mid:     #3D4F63;
+  --vs-ink-soft:    #6B7D92;
+  --vs-ink-faint:   #A8B4C0;
+  --vs-rule:        #E2DDD6;
+  --vs-rule-soft:   #EDE9E2;
+  --vs-green:       #2A6B44;
+  --vs-green-bg:    #EAF3EE;
+  --vs-amber:       #9B6B1A;
+  --vs-amber-bg:    #FBF3E4;
+  --vs-red:         #8B2635;
+  --vs-red-bg:      #FAECEE;
+  --vs-serif:       'Playfair Display', 'Georgia', 'Times New Roman', serif;
+  --vs-sans:        'Inter', -apple-system, 'Helvetica Neue', sans-serif;
+  --vs-radius:      8px;
+  --vs-radius-lg:   12px;
+  --vs-shadow:      0 1px 3px rgba(13,27,42,0.06), 0 4px 16px rgba(13,27,42,0.04);
+  --vs-shadow-md:   0 2px 8px rgba(13,27,42,0.08), 0 8px 32px rgba(13,27,42,0.06);
+  --vs-transition:  all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Global reset for Streamlit chrome ── */
+.stApp {
+  background-color: var(--vs-bg) !important;
+  font-family: var(--vs-sans) !important;
+  color: var(--vs-ink) !important;
+}
+
 /* ── Layout ── */
-.block-container { padding: 1.5rem 2rem 2rem 2rem; }
-div[data-testid="stSidebarContent"] { padding: 1rem 1rem; }
+.block-container {
+  padding: 2rem 2.5rem 3rem 2.5rem !important;
+  max-width: 1280px !important;
+}
+div[data-testid="stSidebarContent"] {
+  padding: 1.5rem 1.25rem !important;
+  background: var(--vs-navy) !important;
+}
+
+/* ── Sidebar: typography, nav, items ── */
+[data-testid="stSidebar"] * { color: #CBD5E0 !important; }
+[data-testid="stSidebar"] .stMarkdown p,
+[data-testid="stSidebar"] .stMarkdown h1,
+[data-testid="stSidebar"] .stMarkdown h2,
+[data-testid="stSidebar"] .stMarkdown h3 { color: #F7F5F1 !important; }
+[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,0.10) !important; margin: 1rem 0 !important; }
+[data-testid="stSidebar"] .stCaption { color: rgba(203,213,224,0.55) !important; font-size: 0.72rem !important; }
+
+/* Sidebar nav buttons */
+[data-testid="stSidebar"] .stButton button {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: rgba(203,213,224,0.80) !important;
+  font-family: var(--vs-sans) !important;
+  font-size: 0.88rem !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.01em !important;
+  padding: 0.5rem 0.75rem !important;
+  border-radius: var(--vs-radius) !important;
+  text-align: left !important;
+  transition: var(--vs-transition) !important;
+}
+[data-testid="stSidebar"] .stButton button:hover {
+  background: rgba(255,255,255,0.07) !important;
+  color: #FFFFFF !important;
+  border-color: transparent !important;
+}
+/* Active nav item */
+[data-testid="stSidebar"] .stButton button[kind="primary"] {
+  background: rgba(184,146,74,0.18) !important;
+  border-color: rgba(184,146,74,0.45) !important;
+  color: var(--vs-gold-light) !important;
+  font-weight: 500 !important;
+}
+[data-testid="stSidebar"] .stButton button[kind="primary"]:hover {
+  background: rgba(184,146,74,0.26) !important;
+}
+
+/* Sidebar selectbox / multiselect */
+[data-testid="stSidebar"] .stMultiSelect [data-baseweb="select"] > div,
+[data-testid="stSidebar"] .stSelectbox [data-baseweb="select"] > div {
+  background: rgba(255,255,255,0.07) !important;
+  border-color: rgba(255,255,255,0.12) !important;
+  border-radius: var(--vs-radius) !important;
+}
+[data-testid="stSidebar"] .stMultiSelect span[data-baseweb="tag"] {
+  background: rgba(184,146,74,0.25) !important;
+  color: var(--vs-gold-light) !important;
+}
+
+/* Sidebar slider */
+[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] [role="slider"] {
+  background: var(--vs-gold) !important;
+  border-color: var(--vs-gold) !important;
+}
+[data-testid="stSidebar"] .stSlider [data-baseweb="slider"] div[class*="Track"] {
+  background: var(--vs-gold) !important;
+}
+
+/* Sidebar toggle */
+[data-testid="stSidebar"] .stToggle label { color: rgba(203,213,224,0.80) !important; }
+
+/* ── Main content typography ── */
+.stApp h1, .stApp h2, .stApp h3 {
+  font-family: var(--vs-serif) !important;
+  color: var(--vs-navy) !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+}
+.stApp h1 { font-size: 2rem !important; margin-bottom: 0.25rem !important; }
+.stApp h2 { font-size: 1.45rem !important; }
+.stApp h3 { font-size: 1.15rem !important; }
+.stApp p, .stApp li, .stApp .stMarkdown {
+  font-family: var(--vs-sans) !important;
+  color: var(--vs-ink-mid) !important;
+  font-size: 0.9rem !important;
+  line-height: 1.65 !important;
+}
+.stApp .stCaption { font-size: 0.75rem !important; color: var(--vs-ink-soft) !important; }
+.stApp hr { border-color: var(--vs-rule) !important; }
+
+/* ── Streamlit metric widget ── */
+[data-testid="stMetric"] {
+  background: var(--vs-bg-card) !important;
+  border: 1px solid var(--vs-rule) !important;
+  border-radius: var(--vs-radius-lg) !important;
+  padding: 1rem 1.25rem !important;
+  box-shadow: var(--vs-shadow) !important;
+}
+[data-testid="stMetricLabel"] { color: var(--vs-ink-soft) !important; font-size: 0.72rem !important; text-transform: uppercase !important; letter-spacing: 0.07em !important; }
+[data-testid="stMetricValue"] { color: var(--vs-navy) !important; font-family: var(--vs-serif) !important; font-size: 1.8rem !important; font-weight: 600 !important; }
+[data-testid="stMetricDelta"] { font-size: 0.8rem !important; font-weight: 500 !important; }
+
+/* ── Main action buttons (primary) ── */
+.stButton button[kind="primary"] {
+  background: var(--vs-navy) !important;
+  border: 1px solid var(--vs-navy) !important;
+  color: #FFFFFF !important;
+  font-family: var(--vs-sans) !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.02em !important;
+  border-radius: var(--vs-radius) !important;
+  padding: 0.5rem 1.25rem !important;
+  transition: var(--vs-transition) !important;
+  box-shadow: none !important;
+}
+.stButton button[kind="primary"]:hover {
+  background: var(--vs-navy-mid) !important;
+  border-color: var(--vs-navy-mid) !important;
+}
+
+/* Secondary buttons */
+.stButton button[kind="secondary"],
+.stButton button:not([kind]) {
+  background: var(--vs-bg-card) !important;
+  border: 1px solid var(--vs-rule) !important;
+  color: var(--vs-ink-mid) !important;
+  font-family: var(--vs-sans) !important;
+  font-size: 0.85rem !important;
+  font-weight: 400 !important;
+  border-radius: var(--vs-radius) !important;
+  padding: 0.5rem 1.25rem !important;
+  transition: var(--vs-transition) !important;
+}
+.stButton button[kind="secondary"]:hover,
+.stButton button:not([kind]):hover {
+  background: var(--vs-bg-subtle) !important;
+  border-color: var(--vs-ink-faint) !important;
+  color: var(--vs-ink) !important;
+}
+
+/* ── Text inputs / text areas ── */
+.stTextInput input, .stTextArea textarea {
+  background: var(--vs-bg-card) !important;
+  border: 1px solid var(--vs-rule) !important;
+  border-radius: var(--vs-radius) !important;
+  color: var(--vs-ink) !important;
+  font-family: var(--vs-sans) !important;
+  font-size: 0.88rem !important;
+  transition: border-color 0.2s !important;
+}
+.stTextInput input:focus, .stTextArea textarea:focus {
+  border-color: var(--vs-gold) !important;
+  box-shadow: 0 0 0 2px rgba(184,146,74,0.15) !important;
+}
+
+/* ── Selectbox ── */
+.stSelectbox [data-baseweb="select"] > div {
+  background: var(--vs-bg-card) !important;
+  border: 1px solid var(--vs-rule) !important;
+  border-radius: var(--vs-radius) !important;
+  color: var(--vs-ink) !important;
+  font-family: var(--vs-sans) !important;
+  font-size: 0.88rem !important;
+}
+.stSelectbox [data-baseweb="select"] > div:focus-within {
+  border-color: var(--vs-gold) !important;
+}
+
+/* ── Multiselect ── */
+.stMultiSelect [data-baseweb="select"] > div {
+  background: var(--vs-bg-card) !important;
+  border: 1px solid var(--vs-rule) !important;
+  border-radius: var(--vs-radius) !important;
+}
+.stMultiSelect span[data-baseweb="tag"] {
+  background: var(--vs-gold-pale) !important;
+  color: var(--vs-amber) !important;
+  border-radius: 4px !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+}
+
+/* ── Slider ── */
+.stSlider [data-baseweb="slider"] [role="slider"] {
+  background: var(--vs-navy) !important;
+  border-color: var(--vs-navy) !important;
+}
+
+/* ── Expanders ── */
+.stExpander {
+  border: 1px solid var(--vs-rule) !important;
+  border-radius: var(--vs-radius-lg) !important;
+  background: var(--vs-bg-card) !important;
+  box-shadow: var(--vs-shadow) !important;
+  overflow: hidden !important;
+}
+.stExpander summary {
+  background: var(--vs-bg-raised) !important;
+  font-family: var(--vs-sans) !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  color: var(--vs-ink) !important;
+  padding: 0.75rem 1rem !important;
+}
+.stExpander summary:hover { background: var(--vs-bg-subtle) !important; }
+.stExpander [data-testid="stExpanderDetails"] {
+  padding: 1rem !important;
+  background: var(--vs-bg-card) !important;
+}
+
+/* ── Streamlit tabs ── */
+.stTabs [data-baseweb="tab-list"] {
+  border-bottom: 1px solid var(--vs-rule) !important;
+  gap: 0 !important;
+  background: transparent !important;
+}
+.stTabs [data-baseweb="tab"] {
+  font-family: var(--vs-sans) !important;
+  font-size: 0.85rem !important;
+  font-weight: 400 !important;
+  color: var(--vs-ink-soft) !important;
+  padding: 0.6rem 1rem !important;
+  border-bottom: 2px solid transparent !important;
+  background: transparent !important;
+}
+.stTabs [aria-selected="true"] {
+  color: var(--vs-navy) !important;
+  border-bottom-color: var(--vs-gold) !important;
+  font-weight: 500 !important;
+}
+
+/* ── Alerts / info boxes ── */
+.stAlert {
+  border-radius: var(--vs-radius-lg) !important;
+  font-family: var(--vs-sans) !important;
+  font-size: 0.87rem !important;
+  border: 1px solid var(--vs-rule) !important;
+}
+
+/* ── Streamlit dataframe / table ── */
+.stDataFrame { border-radius: var(--vs-radius-lg) !important; overflow: hidden !important; box-shadow: var(--vs-shadow) !important; }
+
+/* ── Progress bar ── */
+.stProgress > div > div { background: var(--vs-gold) !important; }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   COMPONENT CLASSES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Section headers ── */
+.section-header {
+    font-family: var(--vs-sans);
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--vs-ink-soft);
+    margin-bottom: 12px;
+    margin-top: 4px;
+}
 
 /* ── Instrument card ── */
 .card {
-    background: #161926;
-    border: 1px solid #2a2f45;
-    border-radius: 12px;
-    padding: 18px 20px 14px 20px;
-    margin-bottom: 14px;
-    transition: border-color 0.2s;
+    background: var(--vs-bg-card);
+    border: 1px solid var(--vs-rule);
+    border-radius: var(--vs-radius-lg);
+    padding: 20px 22px 16px 22px;
+    margin-bottom: 12px;
+    box-shadow: var(--vs-shadow);
+    transition: box-shadow 0.25s cubic-bezier(0.4,0,0.2,1),
+                border-color 0.25s cubic-bezier(0.4,0,0.2,1);
 }
-.card:hover { border-color: #4a5080; }
+.card:hover {
+    border-color: var(--vs-ink-faint);
+    box-shadow: var(--vs-shadow-md);
+}
 .card-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
-.card-title { font-size: 1.05rem; font-weight: 600; color: #e8eaf6; }
-.card-sub   { font-size: 0.78rem; color: #8890b0; margin-top: 2px; }
+.card-title {
+    font-family: var(--vs-sans);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--vs-navy);
+    letter-spacing: -0.01em;
+}
+.card-sub {
+    font-family: var(--vs-sans);
+    font-size: 0.76rem;
+    color: var(--vs-ink-soft);
+    margin-top: 3px;
+    letter-spacing: 0.01em;
+}
 .card-score-box {
-    border-radius: 8px;
-    padding: 6px 12px;
+    border-radius: var(--vs-radius);
+    padding: 8px 14px;
     text-align: center;
-    min-width: 72px;
+    min-width: 76px;
     flex-shrink: 0;
 }
-.card-score-num { font-size: 1.5rem; font-weight: 800; line-height: 1; }
-.card-score-lbl { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
-.card-verdict   { font-size: 0.85rem; color: #b0b8d0; line-height: 1.5; margin: 10px 0 12px 0; }
-.card-metrics   { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.card-score-num {
+    font-family: var(--vs-serif);
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+}
+.card-score-lbl {
+    font-family: var(--vs-sans);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 3px;
+    opacity: 0.85;
+}
+.card-verdict {
+    font-family: var(--vs-sans);
+    font-size: 0.85rem;
+    color: var(--vs-ink-mid);
+    line-height: 1.6;
+    margin: 10px 0 12px 0;
+}
+.card-metrics { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 
 /* ── Metric pills ── */
 .metric-pill {
-    background: #1e2235;
+    background: var(--vs-bg-subtle);
+    border: 1px solid var(--vs-rule);
     border-radius: 20px;
-    padding: 3px 10px;
-    font-size: 0.75rem;
-    color: #9095b0;
+    padding: 3px 11px;
+    font-family: var(--vs-sans);
+    font-size: 0.74rem;
+    color: var(--vs-ink-soft);
 }
-.metric-pill b { color: #c8cee8; }
-.metric-pill.good   { background: #0a2210; color: #4ede8a; }
-.metric-pill.good b { color: #4ede8a; }
-.metric-pill.warn   { background: #2a1800; color: #ffb74d; }
-.metric-pill.warn b { color: #ffb74d; }
-.metric-pill.bad    { background: #2a0a0a; color: #ff5252; }
-.metric-pill.bad b  { color: #ff5252; }
+.metric-pill b { color: var(--vs-ink); font-weight: 600; }
+.metric-pill.good   { background: var(--vs-green-bg);  border-color: rgba(42,107,68,0.2);  color: var(--vs-green); }
+.metric-pill.good b { color: var(--vs-green); }
+.metric-pill.warn   { background: var(--vs-amber-bg);  border-color: rgba(155,107,26,0.2); color: var(--vs-amber); }
+.metric-pill.warn b { color: var(--vs-amber); }
+.metric-pill.bad    { background: var(--vs-red-bg);    border-color: rgba(139,38,53,0.2);  color: var(--vs-red); }
+.metric-pill.bad b  { color: var(--vs-red); }
 
 /* ── Quality fail badge ── */
 .quality-fail {
-    background: #2a0a0a;
-    color: #ff5252;
+    background: var(--vs-red-bg);
+    color: var(--vs-red);
+    border: 1px solid rgba(139,38,53,0.2);
     border-radius: 6px;
-    padding: 3px 8px;
+    padding: 3px 9px;
+    font-family: var(--vs-sans);
     font-size: 0.72rem;
+    font-weight: 500;
     display: inline-block;
-    margin-bottom: 6px;
-}
-
-/* ── Section headers ── */
-.section-header {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #5a6080;
-    margin-bottom: 10px;
-    margin-top: 4px;
+    margin-bottom: 8px;
 }
 
 /* ── Dashboard summary tiles ── */
 .summary-tile {
-    background: #161926;
-    border: 1px solid #2a2f45;
-    border-radius: 10px;
-    padding: 16px 18px;
+    background: var(--vs-bg-card);
+    border: 1px solid var(--vs-rule);
+    border-radius: var(--vs-radius-lg);
+    padding: 18px 20px 16px 20px;
+    box-shadow: var(--vs-shadow);
+    transition: var(--vs-transition);
 }
-.summary-number { font-size: 2rem; font-weight: 700; line-height: 1; color: #e8eaf6; }
-.summary-label  { font-size: 0.72rem; color: #8890b0; text-transform: uppercase; letter-spacing: 0.06em; }
+.summary-tile:hover { box-shadow: var(--vs-shadow-md); }
+.summary-number {
+    font-family: var(--vs-serif);
+    font-size: 2.2rem;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--vs-navy);
+    letter-spacing: -0.02em;
+}
+.summary-label {
+    font-family: var(--vs-sans);
+    font-size: 0.69rem;
+    color: var(--vs-ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 5px;
+}
 
 /* ── Signal badges on cards ── */
 .signal-badge {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    border-radius: 12px;
-    padding: 2px 8px;
-    font-size: 0.70rem;
-    font-weight: 600;
+    border-radius: 10px;
+    padding: 2px 9px;
+    font-family: var(--vs-sans);
+    font-size: 0.69rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
     margin-right: 4px;
     margin-bottom: 4px;
     cursor: default;
@@ -210,141 +574,170 @@ div[data-testid="stSidebarContent"] { padding: 1rem 1rem; }
 
 /* ── Macro status bar ── */
 .macro-bar {
-    background: #0e1120;
-    border: 1px solid #2a2f45;
-    border-radius: 8px;
-    padding: 10px 16px;
+    background: var(--vs-bg-card);
+    border: 1px solid var(--vs-rule);
+    border-radius: var(--vs-radius-lg);
+    padding: 12px 20px;
     display: flex;
     flex-wrap: wrap;
-    gap: 20px;
+    gap: 24px;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
+    box-shadow: var(--vs-shadow);
 }
 .macro-item {
     display: flex;
     flex-direction: column;
     align-items: center;
 }
-.macro-item-val { font-size: 0.9rem; font-weight: 700; line-height: 1.2; }
-.macro-item-lbl { font-size: 0.62rem; color: #5a6080; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 1px; }
+.macro-item-val {
+    font-family: var(--vs-sans);
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--vs-navy);
+    line-height: 1.2;
+}
+.macro-item-lbl {
+    font-family: var(--vs-sans);
+    font-size: 0.60rem;
+    color: var(--vs-ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-top: 2px;
+}
 
 /* ── Changed-since-scan banner ── */
 .changed-banner {
-    background: #101520;
-    border: 1px solid #2a2f45;
-    border-left: 4px solid #7986cb;
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 16px;
+    background: var(--vs-bg-card);
+    border: 1px solid var(--vs-rule);
+    border-left: 3px solid var(--vs-gold);
+    border-radius: var(--vs-radius-lg);
+    padding: 14px 18px;
+    margin-bottom: 18px;
+    font-family: var(--vs-sans);
     font-size: 0.85rem;
-    color: #9095b0;
+    color: var(--vs-ink-mid);
+    box-shadow: var(--vs-shadow);
 }
-.changed-banner b { color: #c8cee8; }
+.changed-banner b { color: var(--vs-ink); font-weight: 600; }
 
 /* ── Score breakdown table ── */
 .breakdown-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 4px 0;
-    border-bottom: 1px solid #1e2235;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--vs-rule-soft);
+    font-family: var(--vs-sans);
     font-size: 0.78rem;
-    color: #9095b0;
+    color: var(--vs-ink-soft);
 }
 .breakdown-row:last-child { border-bottom: none; }
 .breakdown-bar-bg {
-    background: #1e2235;
+    background: var(--vs-bg-subtle);
     border-radius: 4px;
-    height: 6px;
+    height: 5px;
     flex: 1;
-    margin: 0 10px;
+    margin: 0 12px;
     overflow: hidden;
 }
 .breakdown-bar-fill { height: 100%; border-radius: 4px; }
 
 /* ── Deep Analysis ── */
 .da-section {
-    background: #111420;
-    border: 1px solid #2a2f45;
-    border-radius: 10px;
-    padding: 16px 20px;
-    margin: 10px 0 6px 0;
+    background: var(--vs-bg-raised);
+    border: 1px solid var(--vs-rule);
+    border-radius: var(--vs-radius-lg);
+    padding: 18px 22px;
+    margin: 10px 0 8px 0;
 }
 .da-section-title {
-    font-size: 0.78rem;
+    font-family: var(--vs-sans);
+    font-size: 0.69rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
-    color: #7986cb;
+    letter-spacing: 0.10em;
+    color: var(--vs-gold);
     text-transform: uppercase;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 .da-score-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 6px;
+    gap: 14px;
+    margin-bottom: 8px;
 }
 .da-score-big {
-    font-size: 2rem;
-    font-weight: 800;
+    font-family: var(--vs-serif);
+    font-size: 2.1rem;
+    font-weight: 600;
     line-height: 1;
+    color: var(--vs-navy);
+    letter-spacing: -0.02em;
 }
 .da-rating {
-    font-size: 0.85rem;
-    font-weight: 600;
-    padding: 3px 10px;
+    font-family: var(--vs-sans);
+    font-size: 0.83rem;
+    font-weight: 500;
+    padding: 4px 12px;
     border-radius: 20px;
 }
 .da-confidence {
-    font-size: 0.75rem;
-    color: #8890b0;
+    font-family: var(--vs-sans);
+    font-size: 0.74rem;
+    color: var(--vs-ink-soft);
     margin-left: 4px;
 }
 .da-bar-bg {
-    background: #1e2235;
+    background: var(--vs-bg-subtle);
     border-radius: 4px;
-    height: 8px;
+    height: 7px;
     flex: 1;
     overflow: hidden;
-    margin: 0 10px;
+    margin: 0 12px;
 }
 .da-bar-fill { height: 100%; border-radius: 4px; }
 .da-component-row {
     display: flex;
     align-items: center;
-    padding: 5px 0;
-    border-bottom: 1px solid #1e2235;
-    font-size: 0.8rem;
-    color: #9095b0;
-    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--vs-rule-soft);
+    font-family: var(--vs-sans);
+    font-size: 0.80rem;
+    color: var(--vs-ink-mid);
+    gap: 10px;
 }
 .da-component-row:last-child { border-bottom: none; }
 .da-just {
-    font-size: 0.78rem;
-    color: #8890b0;
-    line-height: 1.5;
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid #1e2235;
+    font-family: var(--vs-sans);
+    font-size: 0.80rem;
+    color: var(--vs-ink-mid);
+    line-height: 1.6;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--vs-rule-soft);
 }
 .da-risk-tag {
     display: inline-block;
-    background: #2a1a1a;
-    color: #ff7043;
-    border: 1px solid #ff704344;
+    background: var(--vs-red-bg);
+    color: var(--vs-red);
+    border: 1px solid rgba(139,38,53,0.18);
     border-radius: 4px;
-    padding: 2px 8px;
+    padding: 2px 9px;
+    font-family: var(--vs-sans);
     font-size: 0.72rem;
+    font-weight: 500;
     margin: 2px 3px 2px 0;
 }
 .da-driver-tag {
     display: inline-block;
-    background: #0a2e1a;
-    color: #4ede8a;
-    border: 1px solid #4ede8a44;
+    background: var(--vs-green-bg);
+    color: var(--vs-green);
+    border: 1px solid rgba(42,107,68,0.18);
     border-radius: 4px;
-    padding: 2px 8px;
+    padding: 2px 9px;
+    font-family: var(--vs-sans);
     font-size: 0.72rem;
+    font-weight: 500;
     margin: 2px 3px 2px 0;
 }
 </style>
@@ -741,24 +1134,33 @@ def apply_filters(instruments: list, include_excluded=False) -> list:
 
 with st.sidebar:
     # ── Branding ─────────────────────────────────────────────────────────────
-    st.markdown("## 📊 Value Screener")
-    st.caption("Quality · Fair Price · Long-term")
+    st.markdown(
+        '<div style="padding:0.25rem 0 1rem 0">'
+        '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:1.25rem;'
+        'font-weight:700;color:#FFFFFF;letter-spacing:-0.01em;line-height:1.2">Value Screener</div>'
+        '<div style="font-family:\'Inter\',sans-serif;font-size:0.65rem;color:rgba(203,213,224,0.55);'
+        'letter-spacing:0.10em;text-transform:uppercase;margin-top:4px">'
+        'Quality &middot; Fair Price &middot; Long-term</div>'
+        '<div style="width:24px;height:1px;background:#B8924A;margin-top:10px;border-radius:1px"></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     # ── Navigation ──────────────────────────────────────────────────────────
     _latest_signals = load_latest_signals()
     _high_count = sum(1 for s in _latest_signals if s.get("severity") == "high")
-    _signals_label = f"🚨  Signals ({_high_count} new)" if _high_count > 0 else "🚨  Signals"
+    _signals_label = f"Signals  ·  {_high_count} new" if _high_count > 0 else "Signals"
     _scoring_changed = st.session_state.scoring_changed
-    _settings_label  = "⚙️  Settings ●" if _scoring_changed else "⚙️  Settings"
+    _settings_label  = "Settings  ●" if _scoring_changed else "Settings"
 
     pages = {
-        "🏠  Dashboard":   "home",
-        "🔍  Screen":      "screener",
-        "⭐  Holdings":    "watchlist",
-        "📈  Compare":     "compare",
+        "Dashboard":       "home",
+        "Screen":          "screener",
+        "Holdings":        "watchlist",
+        "Compare":         "compare",
         _signals_label:    "signals",
-        "📰  Briefing":    "briefing",
+        "Briefing":        "briefing",
         _settings_label:   "settings",
     }
     for label, key in pages.items():
@@ -788,7 +1190,7 @@ with st.sidebar:
     # Data freshness indicator
     _age = cache_age_hours()
     if _age is not None:
-        _freshness = "🟢 Live" if _age < 1 else ("🟡 %dh old" % int(_age) if _age < 8 else "🔴 Stale")
+        _freshness = "Live data" if _age < 1 else ("%dh old" % int(_age) if _age < 8 else "Data stale — %dh" % int(_age))
         st.caption(_freshness)
         # Show stale-data warning so user knows prices may be outdated
         if _age >= 6 and st.session_state.instruments:
@@ -798,9 +1200,9 @@ with st.sidebar:
                 icon="⏰",
             )
     else:
-        st.caption("⬜ No data yet")
+        st.caption("No data loaded")
 
-    fetch_label = "🔄  Refresh Now" if st.session_state.instruments else "⬇️  Load Data"
+    fetch_label = "Refresh Now" if st.session_state.instruments else "Load Data"
     if st.button(fetch_label, type="primary", use_container_width=True):
         if chosen_groups:
             prog = st.progress(0, text="Starting…")
@@ -956,7 +1358,7 @@ def _render_score_breakdown(inst: dict):
                         f'<div class="breakdown-bar-fill" style="width:{pct:.0f}%;background:{col}"></div>'
                         f'</div>')
             score_str = f"{score:.0f}/100"
-            label_col = "#9095b0"
+            label_col = "var(--vs-ink-soft)"
 
         rows_html += (f'<div class="breakdown-row">'
                       f'<span style="min-width:160px;color:{label_col}">{label}</span>'
@@ -1007,10 +1409,10 @@ def _render_macro_bar():
     gilt   = _val(s_uk, "GILT_10Y")
 
     # Colour logic
-    def rate_col(v):  return "#e8eaf6" if v is not None else "#555"
-    def curve_col(v): return "#ff5252" if (v is not None and v < 0) else "#4ede8a" if (v is not None and v > 0.5) else "#ffb74d"
-    def vix_col(v):   return "#ff5252" if (v is not None and v > 30) else "#ffb74d" if (v is not None and v > 20) else "#4ede8a"
-    def hy_col(v):    return "#ff5252" if (v is not None and v > 500) else "#ffb74d" if (v is not None and v > 350) else "#4ede8a"
+    def rate_col(v):  return "var(--vs-ink)" if v is not None else "var(--vs-ink-faint)"
+    def curve_col(v): return "var(--vs-red)" if (v is not None and v < 0) else "var(--vs-green)" if (v is not None and v > 0.5) else "var(--vs-amber)"
+    def vix_col(v):   return "var(--vs-red)" if (v is not None and v > 30) else "var(--vs-amber)" if (v is not None and v > 20) else "var(--vs-green)"
+    def hy_col(v):    return "var(--vs-red)" if (v is not None and v > 500) else "var(--vs-amber)" if (v is not None and v > 350) else "var(--vs-green)"
 
     if ffr is not None:
         items.append(f'<div class="macro-item"><div class="macro-item-val" style="color:{rate_col(ffr)}">{ffr:.2f}%</div><div class="macro-item-lbl">Fed Funds</div></div>')
@@ -1034,9 +1436,9 @@ def _render_macro_bar():
     # Overall tone dot
     all_signals = macro_us.get("signals", []) + macro_uk.get("signals", [])
     high_count  = sum(1 for s in all_signals if s.get("severity") == "high")
-    tone_col    = "#ff5252" if high_count >= 2 else "#ffb74d" if high_count == 1 else "#4ede8a"
+    tone_col    = "var(--vs-red)" if high_count >= 2 else "var(--vs-amber)" if high_count == 1 else "var(--vs-green)"
     tone_lbl    = "Cautious" if high_count >= 2 else "Mixed" if high_count == 1 else "Constructive"
-    tone_item   = (f'<div class="macro-item" style="border-right:1px solid #2a2f45;padding-right:20px;margin-right:4px">'
+    tone_item   = (f'<div class="macro-item" style="border-right:1px solid var(--vs-rule);padding-right:20px;margin-right:4px">'
                    f'<div class="macro-item-val" style="color:{tone_col}">● {tone_lbl}</div>'
                    f'<div class="macro-item-lbl">Macro Backdrop</div></div>')
 
@@ -1167,7 +1569,7 @@ def render_card(inst: dict, show_add_watchlist=True):
     if badges:
         badge_parts = []
         for b in badges:
-            col = b.get("colour", "#7986cb")
+            col = b.get("colour", "#2C4460")
             bg  = col + "22"   # 13% opacity background
             badge_parts.append(
                 f'<span class="signal-badge" style="background:{bg};color:{col};border:1px solid {col}44" '
@@ -1179,7 +1581,7 @@ def render_card(inst: dict, show_add_watchlist=True):
     nudge = inst.get("score_nudge", 0)
     nudge_html = ""
     if nudge and abs(nudge) >= 1 and score is not None:
-        nudge_col = "#4ede8a" if nudge > 0 else "#ff9100"
+        nudge_col = "var(--vs-green)" if nudge > 0 else "var(--vs-amber)"
         nudge_html = (f'<span style="font-size:0.7rem;color:{nudge_col};margin-left:6px">'
                       f'({nudge:+.0f} signal adj.)</span>')
 
@@ -1189,12 +1591,12 @@ def render_card(inst: dict, show_add_watchlist=True):
 
     ytd_html = ""
     if ytd is not None:
-        c = "#4ede8a" if ytd > 0 else "#ff5252" if ytd < 0 else "#8890b0"
-        ytd_html = f'<span style="font-size:0.75rem;color:{c};margin-left:6px">{_fmt_pct(ytd)} YTD</span>'
+        c = "var(--vs-green)" if ytd > 0 else "var(--vs-red)" if ytd < 0 else "var(--vs-ink-soft)"
+        ytd_html = f'<span style="font-size:0.74rem;color:{c};margin-left:8px;font-weight:500">{_fmt_pct(ytd)} YTD</span>'
 
     price_html = ""
     if price:
-        price_html = f'<span style="font-size:0.75rem;color:#8890b0">{cur}&nbsp;{price:,.2f}</span>'
+        price_html = f'<span style="font-size:0.74rem;color:var(--vs-ink-soft)">{cur}&nbsp;{price:,.2f}</span>'
 
     # NOTE: no leading spaces — Streamlit/CommonMark treats 4-space-indented lines as code blocks
     card_html = (
@@ -1262,7 +1664,7 @@ def render_card(inst: dict, show_add_watchlist=True):
 
 def page_home():
     _render_counter.clear()
-    st.markdown("# 🏠 Dashboard")
+    st.markdown("# Dashboard")
 
     instruments = st.session_state.instruments
     age         = cache_age_hours()
@@ -1270,11 +1672,13 @@ def page_home():
     # ── Empty state ────────────────────────────────────────────────────────────
     if not instruments:
         st.markdown(
-            '<div style="text-align:center;padding:60px 20px;color:#8890b0">'
-            '<div style="font-size:3rem;margin-bottom:16px">📊</div>'
-            '<div style="font-size:1.2rem;font-weight:600;color:#c8cee8;margin-bottom:8px">Welcome to Value Screener</div>'
-            '<div style="font-size:0.9rem;line-height:1.6;margin-bottom:24px">'
-            'Choose your markets in the sidebar, then click <b>Load Data</b>.<br>'
+            '<div style="text-align:center;padding:80px 20px;color:var(--vs-ink-soft)">'
+            '<div style="width:40px;height:2px;background:var(--vs-gold);margin:0 auto 28px auto;border-radius:2px"></div>'
+            '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:1.5rem;font-weight:700;'
+            'color:var(--vs-navy);margin-bottom:10px;letter-spacing:-0.01em">Welcome to Value Screener</div>'
+            '<div style="font-family:\'Inter\',sans-serif;font-size:0.9rem;line-height:1.7;'
+            'max-width:400px;margin:0 auto 28px auto;color:var(--vs-ink-mid)">'
+            'Choose your markets in the sidebar, then click <b style="color:var(--vs-ink);font-weight:600">Load Data</b>.<br>'
             'Prices refresh automatically at each market open and close.'
             '</div>'
             '</div>',
@@ -1315,13 +1719,13 @@ def page_home():
     st.markdown('<div style="height:0.25rem"></div>', unsafe_allow_html=True)
 
     c1, c2, c3, c4, c5 = st.columns(5)
-    flagged_col = "#ff9100" if flagged else "#e8eaf6"
+    flagged_col = "var(--vs-amber)" if flagged else "var(--vs-navy)"
     tiles = [
-        (c1, str(len(ok)),            "Instruments screened",         "#e8eaf6"),
-        (c2, str(len(strong_value)),  "Strong value signals",         "#00c853"),
-        (c3, str(len(quality_pass)),  "Stocks passing quality",       "#e8eaf6"),
-        (c4, str(wl_count),           "On your watchlist",            "#e8eaf6"),
-        (c5, str(len(flagged)),       "Flagged by surveillance",      flagged_col),
+        (c1, str(len(ok)),            "Instruments screened",       "var(--vs-navy)"),
+        (c2, str(len(strong_value)),  "Strong value signals",       "var(--vs-green)"),
+        (c3, str(len(quality_pass)),  "Stocks passing quality",     "var(--vs-navy)"),
+        (c4, str(wl_count),           "On your watchlist",          "var(--vs-navy)"),
+        (c5, str(len(flagged)),       "Flagged by surveillance",    flagged_col),
     ]
     for col, num, lbl, num_colour in tiles:
         with col:
@@ -1345,13 +1749,13 @@ def page_home():
             name  = inst.get("name", inst.get("ticker", ""))
             score = inst.get("score")
             arrow = "▲" if drift > 0 else "▼"
-            col   = "#4ede8a" if drift > 0 else "#ff5252"
+            col   = "var(--vs-green)" if drift > 0 else "var(--vs-red)"
             score_str = f"{score:.0f}" if score is not None else "—"
             lines.append(
                 f'<span style="margin-right:20px">'
-                f'<b style="color:#c8cee8">{name}</b> '
+                f'<b style="color:var(--vs-ink)">{name}</b> '
                 f'<span style="color:{col}">{arrow} {abs(drift):.0f} pts</span> '
-                f'<span style="color:#555">→ {score_str}</span>'
+                f'<span style="color:var(--vs-ink-soft)">→ {score_str}</span>'
                 f'</span>'
             )
         st.markdown(
@@ -1412,7 +1816,7 @@ def page_home():
 
 def page_screener():
     _render_counter.clear()
-    st.markdown("# 🔍 Screen")
+    st.markdown("# Screen")
 
     instruments = st.session_state.instruments
     if not instruments:
@@ -1651,24 +2055,26 @@ def _render_search_result():
 
     already_in_wl = ticker in {w["ticker"] for w in st.session_state.watchlist}
 
-    pe_span    = (f'<span><b style="color:#c8cee8">P/E</b> {pe:.1f}x</span>' if pe else '')
-    pb_span    = (f'<span><b style="color:#c8cee8">P/B</b> {pb:.1f}x</span>' if pb else '')
-    yield_span = (f'<span><b style="color:#c8cee8">Yield</b> {div_yield:.2f}%</span>' if div_yield else '')
-    ret_span   = (f'<span><b style="color:#c8cee8">1yr</b> {_fmt_pct(yr1_ret)}</span>' if yr1_ret is not None else '')
-    cap_span   = (f'<span><b style="color:#c8cee8">Mkt cap</b> {_fmt_aum(mktcap)}</span>' if mktcap else '')
+    pe_span    = (f'<span><b style="color:var(--vs-ink)">P/E</b> {pe:.1f}x</span>' if pe else '')
+    pb_span    = (f'<span><b style="color:var(--vs-ink)">P/B</b> {pb:.1f}x</span>' if pb else '')
+    yield_span = (f'<span><b style="color:var(--vs-ink)">Yield</b> {div_yield:.2f}%</span>' if div_yield else '')
+    ret_span   = (f'<span><b style="color:var(--vs-ink)">1yr</b> {_fmt_pct(yr1_ret)}</span>' if yr1_ret is not None else '')
+    cap_span   = (f'<span><b style="color:var(--vs-ink)">Mkt cap</b> {_fmt_aum(mktcap)}</span>' if mktcap else '')
     price_disp = _fmt_price(price, currency + ' ') if price else '—'
     st.markdown(
-        f'<div style="background:#1a1f35;border:1px solid #3a4060;border-radius:10px;padding:16px 20px;margin-bottom:12px">'
+        f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);border-radius:12px;'
+        f'padding:18px 22px;margin-bottom:14px;box-shadow:var(--vs-shadow)">'
         f'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
         f'<div>'
-        f'<span style="font-size:1.1rem;font-weight:700;color:#e8eaf6">{name}</span>'
-        f'<span style="font-size:0.85rem;color:#8890b0;margin-left:10px">{ticker}</span>'
-        f'<span style="font-size:0.75rem;background:#2a3050;color:#9095c0;border-radius:4px;padding:2px 7px;margin-left:8px">{group}</span>'
+        f'<span style="font-size:1.05rem;font-weight:600;color:var(--vs-navy)">{name}</span>'
+        f'<span style="font-size:0.82rem;color:var(--vs-ink-soft);margin-left:10px">{ticker}</span>'
+        f'<span style="font-size:0.72rem;background:var(--vs-bg-subtle);color:var(--vs-ink-mid);'
+        f'border:1px solid var(--vs-rule);border-radius:4px;padding:2px 8px;margin-left:8px">{group}</span>'
         f'</div>'
-        f'<div style="font-size:1.1rem;font-weight:600;color:#c8cee8">{price_disp}</div>'
+        f'<div style="font-size:1rem;font-weight:600;color:var(--vs-navy)">{price_disp}</div>'
         f'</div>'
-        f'<div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:0.82rem;color:#9095b0">'
-        f'<span><b style="color:#c8cee8">Sector</b> {sector}</span>'
+        f'<div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:0.82rem;color:var(--vs-ink-mid)">'
+        f'<span><b style="color:var(--vs-ink)">Sector</b> {sector}</span>'
         f'{pe_span}{pb_span}{yield_span}{ret_span}{cap_span}'
         f'</div>'
         f'</div>',
@@ -1720,17 +2126,17 @@ def _render_deep_analysis(inst: dict):
     # ── Colour helpers ────────────────────────────────────────────────────────
     def _score_col(s, mx):
         pct = s / mx if mx else 0
-        if pct >= 0.8: return "#00c853"
-        if pct >= 0.6: return "#ffd600"
-        if pct >= 0.4: return "#ff9100"
-        return "#ff1744"
+        if pct >= 0.8: return "var(--vs-green)"
+        if pct >= 0.6: return "var(--vs-amber)"
+        if pct >= 0.4: return "#B85C20"
+        return "var(--vs-red)"
 
     def _rating_col(r):
         r = (r or "").lower()
-        if "exceptional" in r: return "#00c853"
-        if "strong"      in r: return "#ffd600"
-        if "moderate"    in r: return "#ff9100"
-        return "#ff1744"
+        if "exceptional" in r: return "var(--vs-green)"
+        if "strong"      in r: return "var(--vs-amber)"
+        if "moderate"    in r: return "#B85C20"
+        return "var(--vs-red)"
 
     def _conf_icon(c):
         c = (c or "").lower()
@@ -1869,8 +2275,8 @@ def _render_deep_analysis(inst: dict):
     summary = cached.get("final_assessment", {}).get("summary", "")
     if summary:
         st.markdown(
-            f'<div style="font-size:0.85rem;color:#c8cee8;line-height:1.6;'
-            f'margin-bottom:12px;padding:12px 14px;background:#161926;'
+            f'<div style="font-size:0.85rem;color:var(--vs-ink-mid);line-height:1.6;'
+            f'margin-bottom:12px;padding:14px 16px;background:var(--vs-bg-raised);'
             f'border-radius:8px;border-left:3px solid {rat_col}">{summary}</div>',
             unsafe_allow_html=True,
         )
@@ -2021,7 +2427,7 @@ def _refresh_single_ticker(wl_entry: dict):
 
 def page_watchlist():
     _render_counter.clear()
-    st.markdown("# ⭐ Holdings")
+    st.markdown("# Holdings")
 
     # ── Search & Add any instrument ───────────────────────────────────────────
     st.markdown('<div class="section-header">Add to holdings</div>', unsafe_allow_html=True)
@@ -2050,11 +2456,13 @@ def page_watchlist():
     watchlist = st.session_state.watchlist
     if not watchlist:
         st.markdown(
-            '<div style="text-align:center;padding:40px 20px;color:#8890b0">'
-            '<div style="font-size:2rem;margin-bottom:12px">⭐</div>'
-            '<div style="font-size:1rem;color:#c8cee8;margin-bottom:6px">Your watchlist is empty</div>'
-            '<div style="font-size:0.85rem">Use <b>Search</b> above to find any stock, ETF, or fund and add it here. '
-            'Or go to <b>Find Ideas</b> and click <b>+ Watchlist</b> on any instrument.</div>'
+            '<div style="text-align:center;padding:60px 20px">'
+            '<div style="width:32px;height:1px;background:var(--vs-rule);margin:0 auto 24px auto"></div>'
+            '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:1.2rem;font-weight:600;'
+            'color:var(--vs-navy);margin-bottom:8px">Your holdings list is empty</div>'
+            '<div style="font-size:0.85rem;color:var(--vs-ink-mid);max-width:360px;margin:0 auto">'
+            'Use <b style="color:var(--vs-ink)">Search</b> above to find any stock, ETF, or fund and add it here. '
+            'Or go to <b style="color:var(--vs-ink)">Screen</b> and click <b style="color:var(--vs-ink)">+ Watchlist</b> on any instrument.</div>'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -2110,7 +2518,7 @@ def page_watchlist():
         if price and added_price and added_price > 0:
             chg    = (price / added_price - 1) * 100
             sign   = "+" if chg > 0 else ""
-            colour = "#4ede8a" if chg > 0 else "#ff5252"
+            colour = "var(--vs-green)" if chg > 0 else "var(--vs-red)"
             change_str = (
                 f'<span style="color:{colour};font-weight:600">'
                 f'{sign}{chg:.1f}% since added</span>'
@@ -2174,7 +2582,7 @@ def page_watchlist():
 
 def page_compare():
     _render_counter.clear()
-    st.markdown("# 📈 Compare")
+    st.markdown("# Compare")
 
     instruments = st.session_state.instruments
     if not instruments:
@@ -2262,7 +2670,7 @@ def page_compare():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _severity_colour(sev: str) -> str:
-    return {"high": "#ff5252", "medium": "#ffb74d", "low": "#4ede8a", "info": "#7986cb"}.get(sev, "#888")
+    return {"high": "var(--vs-red)", "medium": "var(--vs-amber)", "low": "var(--vs-green)", "info": "var(--vs-gold)"}.get(sev, "var(--vs-ink-soft)")
 
 def _severity_icon(sev: str) -> str:
     return {"high": "🔴", "medium": "🟡", "low": "🟢", "info": "🔵"}.get(sev, "⚪")
@@ -2283,7 +2691,7 @@ def _type_label(t: str) -> str:
 
 
 def page_signals():
-    st.markdown("# 🚨 Signals & Alerts")
+    st.markdown("# Signals & Alerts")
 
     signals = load_latest_signals()
     last_run = get_last_run_time()
@@ -2407,7 +2815,7 @@ def page_signals():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def page_briefing():
-    st.markdown("# 📰 Morning Briefing")
+    st.markdown("# Morning Briefing")
 
     briefing = load_briefing()
 
@@ -2444,17 +2852,20 @@ def page_briefing():
 
     # ── Headline ───────────────────────────────────────────────────────────────
     st.markdown(
-        f'<div style="background:#161926;border:1px solid #2a2f45;border-radius:10px;'
-        f'padding:18px 20px;margin-bottom:16px;font-size:1rem;color:#c8cee8;line-height:1.6">'
-        f'<b>Today\'s Summary</b><br>{briefing.get("headline","")}</div>',
+        f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);'
+        f'border-left:3px solid var(--vs-gold);border-radius:10px;'
+        f'padding:18px 22px;margin-bottom:18px;font-family:\'Inter\',sans-serif;'
+        f'font-size:0.92rem;color:var(--vs-ink-mid);line-height:1.7;box-shadow:var(--vs-shadow)">'
+        f'<b style="color:var(--vs-navy);font-weight:600;display:block;margin-bottom:6px">Today\'s Summary</b>'
+        f'{briefing.get("headline","")}</div>',
         unsafe_allow_html=True,
     )
 
     # ── Macro section ──────────────────────────────────────────────────────────
     macro = briefing.get("macro", {})
     tone  = macro.get("tone", "mixed")
-    tone_colours = {"constructive": "#4ede8a", "mixed": "#ffb74d", "cautious": "#ff5252"}
-    tone_col = tone_colours.get(tone, "#888")
+    tone_colours = {"constructive": "var(--vs-green)", "mixed": "var(--vs-amber)", "cautious": "var(--vs-red)"}
+    tone_col = tone_colours.get(tone, "var(--vs-ink-soft)")
 
     with st.expander(f"📊 Macro — {tone.title()} backdrop", expanded=True):
         st.markdown(
@@ -2478,10 +2889,11 @@ def page_briefing():
             for sig in high_sigs:
                 col = _severity_colour(sig.get("severity", "high"))
                 st.markdown(
-                    f'<div style="border-left:3px solid {col};padding:8px 12px;'
-                    f'margin-bottom:8px;background:#1e2235;border-radius:4px">'
-                    f'<b style="color:#e8eaf6">{sig["title"]}</b><br>'
-                    f'<span style="color:#9095b0;font-size:0.85rem">{sig.get("detail","")}</span>'
+                    f'<div style="border-left:3px solid {col};padding:10px 14px;'
+                    f'margin-bottom:8px;background:var(--vs-bg-raised);border-radius:6px;'
+                    f'border:1px solid var(--vs-rule)">'
+                    f'<b style="color:var(--vs-navy);font-size:0.88rem">{sig["title"]}</b><br>'
+                    f'<span style="color:var(--vs-ink-mid);font-size:0.83rem">{sig.get("detail","")}</span>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -2516,17 +2928,17 @@ def page_briefing():
         with st.expander(f"👁️ Your watchlist ({len(wl_data)} items)", expanded=False):
             for item in wl_data:
                 score_val = _f(item.get("score"))
-                score_col = score_colour(score_val) if score_val else "#888"
+                score_col = score_colour(score_val) if score_val else "var(--vs-ink-soft)"
                 ytd_str   = _fmt_pct(item.get("ytd_pct"))
                 yr1_str   = _fmt_pct(item.get("yr1_pct"))
                 st.markdown(
-                    f'<div style="display:flex;justify-content:space-between;padding:8px 0;'
-                    f'border-bottom:1px solid #1e2235">'
-                    f'<div><b style="color:#e8eaf6">{item.get("name","")}</b> '
-                    f'<span style="color:#555">{item.get("ticker","")}</span></div>'
+                    f'<div style="display:flex;justify-content:space-between;padding:9px 0;'
+                    f'border-bottom:1px solid var(--vs-rule-soft)">'
+                    f'<div><b style="color:var(--vs-navy);font-weight:600">{item.get("name","")}</b> '
+                    f'<span style="color:var(--vs-ink-soft);font-size:0.82rem">{item.get("ticker","")}</span></div>'
                     f'<div style="display:flex;gap:16px;align-items:center">'
-                    f'<span style="color:#9095b0;font-size:0.8rem">YTD {ytd_str}</span>'
-                    f'<span style="color:#9095b0;font-size:0.8rem">1Y {yr1_str}</span>'
+                    f'<span style="color:var(--vs-ink-soft);font-size:0.8rem">YTD {ytd_str}</span>'
+                    f'<span style="color:var(--vs-ink-soft);font-size:0.8rem">1Y {yr1_str}</span>'
                     f'<span style="color:{score_col};font-weight:600">{item.get("score","—")}</span>'
                     f'</div></div>',
                     unsafe_allow_html=True,
@@ -2539,26 +2951,27 @@ def page_briefing():
         with st.expander(f"📰 Market headlines ({len(news_items)})", expanded=False):
             for item in news_items:
                 sent = item.get("sentiment", 0)
-                col  = "#4ede8a" if sent > 0.2 else "#ff5252" if sent < -0.2 else "#9095b0"
+                col  = "var(--vs-green)" if sent > 0.2 else "var(--vs-red)" if sent < -0.2 else "var(--vs-ink-soft)"
                 icon = "▲" if sent > 0.2 else "▼" if sent < -0.2 else "─"
                 link = item.get("link", "")
                 title = item.get("title", "")
                 feed  = item.get("feed", "")
                 if link:
                     st.markdown(
-                        f'<div style="padding:6px 0;border-bottom:1px solid #1e2235">'
-                        f'<span style="color:{col}">{icon} </span>'
-                        f'<a href="{link}" target="_blank" style="color:#c8cee8;text-decoration:none">{title}</a>'
-                        f'<span style="color:#555;font-size:0.75rem"> · {feed}</span>'
+                        f'<div style="padding:7px 0;border-bottom:1px solid var(--vs-rule-soft)">'
+                        f'<span style="color:{col};font-size:0.75rem">{icon} </span>'
+                        f'<a href="{link}" target="_blank" style="color:var(--vs-navy);text-decoration:none;'
+                        f'font-size:0.87rem">{title}</a>'
+                        f'<span style="color:var(--vs-ink-faint);font-size:0.74rem"> · {feed}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
                 else:
                     st.markdown(
-                        f'<div style="padding:6px 0;border-bottom:1px solid #1e2235">'
-                        f'<span style="color:{col}">{icon} </span>'
-                        f'<span style="color:#c8cee8">{title}</span>'
-                        f'<span style="color:#555;font-size:0.75rem"> · {feed}</span>'
+                        f'<div style="padding:7px 0;border-bottom:1px solid var(--vs-rule-soft)">'
+                        f'<span style="color:{col};font-size:0.75rem">{icon} </span>'
+                        f'<span style="color:var(--vs-navy);font-size:0.87rem">{title}</span>'
+                        f'<span style="color:var(--vs-ink-faint);font-size:0.74rem"> · {feed}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
@@ -2571,7 +2984,7 @@ def page_briefing():
 
 def page_settings():
     _render_counter.clear()
-    st.markdown("# ⚙️ Scoring Settings")
+    st.markdown("# Scoring Settings")
     st.caption(
         "Adjust how instruments are scored. Changes take effect when you click "
         "**Apply & Rescore** — no data is re-fetched, scoring is instant."
@@ -2585,7 +2998,7 @@ def page_settings():
         """Tiny horizontal stacked bar showing relative weight distribution."""
         total = sum(vals) or 1
         segments = ""
-        colours = ["#7986cb", "#4dd0e1", "#81c784", "#ffb74d", "#f06292"]
+        colours = ["#0D1B2A", "#2C4460", "#B8924A", "#9B6B1A", "#8B2635"]
         for i, (v, lbl) in enumerate(zip(vals, labels)):
             pct = v / total * 100
             col = colours[i % len(colours)]

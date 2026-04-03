@@ -533,20 +533,22 @@ def score_label(score) -> str:
 
 
 def score_colour(score) -> str:
-    if score is None: return "#8890b0"
+    """Text/foreground colour for a score value (light theme)."""
+    if score is None: return "#6B7D92"
     s = float(score)
-    if s >= 80: return "#00c853"
-    if s >= 65: return "#4ede8a"
-    if s >= 50: return "#ffb74d"
-    if s >= 35: return "#ff7043"
-    return "#ff5252"
+    if s >= 80: return "#1E5C38"   # deep green
+    if s >= 65: return "#2A6B44"   # green
+    if s >= 50: return "#9B6B1A"   # amber
+    if s >= 35: return "#B85C20"   # orange-brown
+    return "#8B2635"               # deep red
 
 
 def score_bg(score) -> str:
-    if score is None: return "#1e2235"
+    """Background tint colour for a score badge (light theme)."""
+    if score is None: return "#F4F1EC"
     s = float(score)
-    if s >= 80: return "#0a2e1a"
-    if s >= 65: return "#0a2210"
-    if s >= 50: return "#2a1800"
-    if s >= 35: return "#2a1200"
-    return "#2a0a0a"
+    if s >= 80: return "#D6EDDF"   # green tint
+    if s >= 65: return "#EAF3EE"   # light green
+    if s >= 50: return "#FBF3E4"   # amber tint
+    if s >= 35: return "#FAEEE6"   # orange tint
+    return "#FAECEE"               # red tint

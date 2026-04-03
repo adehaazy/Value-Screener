@@ -118,18 +118,18 @@ def _build_badges(ticker: str, signals: list[dict], news_mentions: dict,
 
         if stype == "score_drift":
             drift = sig.get("drift", 0)
-            icon  = "📈" if drift > 0 else "📉"
-            col   = "#4ede8a" if drift > 0 else "#ff5252"
+            icon  = "▲" if drift > 0 else "▼"
+            col   = "#2A6B44" if drift > 0 else "#8B2635"
             badges.append({"icon": icon, "label": f"{drift:+.0f} pts",
                            "colour": col, "severity": sev, "detail": sig.get("detail", "")})
 
         elif stype == "near_52w_low":
-            badges.append({"icon": "📍", "label": "Near low",
-                           "colour": "#7986cb", "severity": sev, "detail": sig.get("detail", "")})
+            badges.append({"icon": "◆", "label": "Near low",
+                           "colour": "#2C4460", "severity": sev, "detail": sig.get("detail", "")})
 
         elif stype == "value_opportunity":
-            badges.append({"icon": "⭐", "label": "Strong value",
-                           "colour": "#00c853", "severity": sev, "detail": sig.get("detail", "")})
+            badges.append({"icon": "●", "label": "Strong value",
+                           "colour": "#1E5C38", "severity": sev, "detail": sig.get("detail", "")})
 
     # News sentiment badge
     mentions = news_mentions.get(ticker, [])
@@ -137,26 +137,26 @@ def _build_badges(ticker: str, signals: list[dict], news_mentions: dict,
         sentiments = [m.get("sentiment", 0) for m in mentions]
         avg = sum(sentiments) / len(sentiments)
         if avg < -0.3:
-            col = "#ff5252"
-            badges.append({"icon": "🔴", "label": f"{len(mentions)} neg. headlines",
+            col = "#8B2635"
+            badges.append({"icon": "▼", "label": f"{len(mentions)} neg. headlines",
                            "colour": col, "severity": "high" if avg < -0.6 else "medium",
                            "detail": f'Latest: "{mentions[0]["title"][:60]}"'})
         elif avg > 0.3:
-            badges.append({"icon": "🟢", "label": f"{len(mentions)} pos. headlines",
-                           "colour": "#4ede8a", "severity": "low",
+            badges.append({"icon": "▲", "label": f"{len(mentions)} pos. headlines",
+                           "colour": "#2A6B44", "severity": "low",
                            "detail": f'Latest: "{mentions[0]["title"][:60]}"'})
 
     # Insider cluster badge
     cluster_sigs = insider_data.get("cluster_signals", [])
     if any(s.get("ticker") == ticker for s in cluster_sigs):
-        badges.append({"icon": "🏦", "label": "Insider buy",
-                       "colour": "#ffd600", "severity": "medium",
+        badges.append({"icon": "◆", "label": "Insider buy",
+                       "colour": "#9B6B1A", "severity": "medium",
                        "detail": "Multiple insiders bought shares in last 30 days."})
 
     # 8-K filing badge
     if edgar_events.get(ticker):
-        badges.append({"icon": "📋", "label": "8-K filing",
-                       "colour": "#ff9100", "severity": "medium",
+        badges.append({"icon": "◆", "label": "8-K filing",
+                       "colour": "#B85C20", "severity": "medium",
                        "detail": f"Material event filed {edgar_events[ticker][0].get('date', 'recently')}."})
 
     return badges
