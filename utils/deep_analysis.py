@@ -15,7 +15,7 @@ Requires: ANTHROPIC_API_KEY environment variable
 import json
 import os
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 CACHE_DIR = Path(__file__).parent.parent / "cache" / "deep_analysis"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -37,7 +37,9 @@ def load_cached_analysis(ticker: str) -> dict | None:
     try:
         data = json.loads(f.read_text())
         ran_at = datetime.fromisoformat(data.get("_ran_at", "2000-01-01"))
-        if datetime.now() - ran_at < timedelta(days=CACHE_TTL_DAYS):
+        if ran_at.tzinfo is None:
+            ran_at = ran_at.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) - ran_at < timedelta(days=CACHE_TTL_DAYS):
             return data
     except Exception:
         pass
@@ -45,7 +47,7 @@ def load_cached_analysis(ticker: str) -> dict | None:
 
 
 def _save_analysis(ticker: str, data: dict):
-    data["_ran_at"] = datetime.now().isoformat()
+    data["_ran_at"] = datetime.now(timezone.utc).isoformat()
     _cache_file(ticker).write_text(json.dumps(data, indent=2, default=str))
 
 
@@ -57,7 +59,9 @@ def cache_age_days(ticker: str) -> float | None:
     try:
         data = json.loads(f.read_text())
         ran_at = datetime.fromisoformat(data.get("_ran_at", "2000-01-01"))
-        return (datetime.now() - ran_at).total_seconds() / 86400
+        if ran_at.tzinfo is None:
+            ran_at = ran_at.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ran_at).total_seconds() / 86400
     except Exception:
         return None
 

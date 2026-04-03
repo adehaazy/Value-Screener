@@ -20,6 +20,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from utils.helpers import _f, _clamp  # shared helpers — do not redefine locally
+
 # ── Sectors treated as financial services ─────────────────────────────────────
 FINANCIAL_SECTORS = {
     "Financial Services",
@@ -85,21 +87,7 @@ DEFAULT_WEIGHTS = {
 }
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _f(v) -> float | None:
-    """Safely coerce to float; return None for NaN / None / non-numeric."""
-    if v is None:
-        return None
-    try:
-        f = float(v)
-        return None if math.isnan(f) else f
-    except (TypeError, ValueError):
-        return None
-
-
-def _clamp(v: float, lo: float = 0.0, hi: float = 100.0) -> float:
-    return max(lo, min(hi, v))
+# ── Helpers (_f and _clamp imported from utils.helpers) ───────────────────────
 
 
 def _is_financial(inst: dict) -> bool:

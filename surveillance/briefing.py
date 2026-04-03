@@ -15,7 +15,7 @@ No LLM used — all text is generated deterministically from data.
 
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 CACHE_DIR = Path(__file__).parent.parent / "cache"
 BRIEFING_FILE = CACHE_DIR / "briefing.json"
@@ -197,8 +197,9 @@ def generate_briefing(
 
     Returns: briefing dict
     """
-    now = datetime.now()
-    date_str = now.strftime("%A %d %B %Y, %H:%M")
+    now_utc  = datetime.now(timezone.utc)           # UTC — used for the stored ISO timestamp
+    now_local = datetime.now()                       # local time — used only for display string
+    date_str = now_local.strftime("%A %d %B %Y, %H:%M")
 
     macro_section  = _build_macro_section(
         surveillance_data.get("macro_us", {}),
@@ -218,7 +219,7 @@ def generate_briefing(
     )[:5]
 
     briefing = {
-        "generated_at":  now.isoformat(),
+        "generated_at":  now_utc.isoformat(),
         "date_str":      date_str,
         "headline":      headline,
         "macro":         macro_section,

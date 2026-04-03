@@ -39,6 +39,7 @@ from data.fetcher   import (fetch_one, compute_sector_medians,
                              _cache_is_fresh, _load_cache)   # public API usage
 from utils.scoring  import (score_all, score_label, score_colour, score_bg,
                              DEFAULT_QUALITY_THRESHOLDS)
+from utils.helpers  import (_f, _fmt_pct, _fmt_ratio, _fmt_price, _fmt_aum)  # shared helpers
 from utils.verdicts import add_verdicts
 from utils.signals        import load_latest_signals, get_last_run_time, signals_summary
 from utils.signal_enricher import (enrich_with_signals, get_changed_instruments,
@@ -524,54 +525,10 @@ def _next_market_event() -> str | None:
 # FORMAT HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _f(v):
-    """Safely coerce to float, returning None for anything non-numeric."""
-    if v is None:
-        return None
-    try:
-        f = float(v)
-        return None if (f != f) else f   # NaN → None
-    except (TypeError, ValueError):
-        return None
-
-
-def _fmt_pct(v, d=1):
-    v = _f(v)
-    if v is None:
-        return "—"
-    # Avoid formatting -0.0 as "-0.0%"
-    if abs(v) < 0.05:
-        return "0.0%"
-    sign = "+" if v > 0 else ""
-    return f"{sign}{v:.{d}f}%"
-
-
-def _fmt_ratio(v, d=1):
-    v = _f(v)
-    if v is None:
-        return "—"
-    return f"{v:.{d}f}x"
-
-
-def _fmt_price(v, cur=""):
-    v = _f(v)
-    if v is None:
-        return "—"
-    return f"{cur}{v:,.2f}"
-
-
-def _fmt_aum(v):
-    v = _f(v)
-    if v is None:
-        return "—"
-    if v >= 1e9:
-        return f"${v/1e9:.1f}bn"
-    if v >= 1e6:
-        return f"${v/1e6:.0f}m"
-    return f"${v:,.0f}"
-
+# _f, _fmt_pct, _fmt_ratio, _fmt_price, _fmt_aum imported from utils.helpers above.
 
 def _pill(label, value, cls=""):
+    """Render an HTML metric pill for the instrument cards."""
     return f'<span class="metric-pill {cls}"><b>{value}</b> {label}</span>'
 
 
@@ -732,7 +689,7 @@ if _do_auto_refresh:
                  "score": x.get("score"), "verdict": x.get("verdict", "")}
                 for x in sorted(_ok, key=lambda r: _f(r.get("score")) or 0, reverse=True)[:5]
             ],
-            "fetched_at": datetime.now().isoformat(),
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
         })
         st.session_state.toast = (f"📡 Data refreshed — {_refresh_reason}", "info")
         st.rerun()
@@ -868,7 +825,7 @@ with st.sidebar:
                      "score": x.get("score"), "verdict": x.get("verdict", "")}
                     for x in sorted(ok, key=lambda r: _f(r.get("score")) or 0, reverse=True)[:5]
                 ],
-                "fetched_at": datetime.now().isoformat(),
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
             })
             st.rerun()
         else:

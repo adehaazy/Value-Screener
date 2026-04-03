@@ -5,22 +5,7 @@ Produces a 2–3 sentence summary per instrument that explains
 what the data is saying in plain language.
 """
 
-
-def _f(v):
-    if v is None: return None
-    try:
-        f = float(v)
-        return None if (f != f) else f
-    except (TypeError, ValueError):
-        return None
-
-def _pct(v, decimals=1):
-    if v is None: return "N/A"
-    return f"{v*100:.{decimals}f}%"
-
-def _x(v, decimals=1):
-    if v is None: return "N/A"
-    return f"{v:.{decimals}f}x"
+from utils.helpers import _f, _pct, _x  # shared helpers — do not redefine locally
 
 
 # ══════════════════════════════════════════════════════════════════════════════

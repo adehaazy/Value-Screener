@@ -15,11 +15,38 @@ data has changed.
 """
 
 import json
+from enum import Enum
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 CACHE_DIR = Path(__file__).parent.parent / "cache"
 SIGNALS_FILE = CACHE_DIR / "signals_history.json"
+
+
+# ── Severity levels ────────────────────────────────────────────────────────────
+
+class Severity(str, Enum):
+    """
+    Signal severity.  Inherits from str so values serialise to plain strings
+    in JSON and are backwards-compatible with any existing cache files.
+
+    Usage:
+        sig["severity"] = Severity.HIGH          # stored as "high"
+        if sig["severity"] == Severity.HIGH: ...  # comparison works
+        if sig["severity"] == "high": ...          # also works
+    """
+    HIGH   = "high"
+    MEDIUM = "medium"
+    LOW    = "low"
+    INFO   = "info"
+
+# Sort order for display (high → medium → low → info)
+_SEVERITY_ORDER: dict[str, int] = {
+    Severity.HIGH:   0,
+    Severity.MEDIUM: 1,
+    Severity.LOW:    2,
+    Severity.INFO:   3,
+}
 
 
 # ── Persistence helpers ────────────────────────────────────────────────────────
@@ -58,7 +85,7 @@ def _sig(type_: str, severity: str, title: str, detail: str,
         "detail":   detail,
         "ticker":   ticker,
         "source":   source,
-        "ts":       datetime.now().isoformat(),
+        "ts":       datetime.now(timezone.utc).isoformat(),
     }
     s.update(kwargs)
     return s
@@ -94,7 +121,7 @@ def _score_drift_signals(instruments: list[dict], prev_snapshot: dict) -> tuple[
 
         name = inst.get("name", ticker)
         direction = "improved" if drift > 0 else "declined"
-        severity  = "high" if abs(drift) >= 20 else "medium"
+        severity  = Severity.HIGH if abs(drift) >= 20 else Severity.MEDIUM
 
         signals.append(_sig(
             type_    = "score_drift",
@@ -128,7 +155,7 @@ def _value_threshold_signals(instruments: list[dict]) -> list[dict]:
 
         signals.append(_sig(
             type_    = "value_opportunity",
-            severity = "high" if score >= 85 else "medium",
+            severity = Severity.HIGH if score >= 85 else Severity.MEDIUM,
             title    = f"⭐ {name} in Strong Buy territory",
             detail   = f"{name} ({ticker}) scores {score:.0f}/100 — passes quality gate and trades at a meaningful discount to sector peers.",
             ticker   = ticker,
@@ -162,7 +189,7 @@ def _near_52w_low_signals(instruments: list[dict]) -> list[dict]:
         ticker = inst.get("ticker", "")
         signals.append(_sig(
             type_    = "near_52w_low",
-            severity = "medium",
+            severity = Severity.MEDIUM,
             title    = f"📍 {name} near 52-week low",
             detail   = f"{name} ({ticker}) is within {pct_from_low:.1f}% of its 52-week low "
                        f"and passes quality checks. Potential opportunistic entry.",
@@ -179,7 +206,7 @@ def _macro_signals(surveillance_data: dict) -> list[dict]:
     for key in ("macro_us", "macro_uk"):
         src_data = surveillance_data.get(key, {})
         for sig in src_data.get("signals", []):
-            signals.append({**sig, "source": src_data.get("source", key), "ts": datetime.now().isoformat()})
+            signals.append({**sig, "source": src_data.get("source", key), "ts": datetime.now(timezone.utc).isoformat()})
     return signals
 
 
@@ -201,7 +228,7 @@ def _news_signals(surveillance_data: dict, watchlist: list[str]) -> list[dict]:
         if avg_sentiment < -0.3:
             signals.append(_sig(
                 type_    = "news_negative",
-                severity = "high" if avg_sentiment < -0.6 else "medium",
+                severity = Severity.HIGH if avg_sentiment < -0.6 else Severity.MEDIUM,
                 title    = f"🔴 Negative news: {ticker}",
                 detail   = f"{len(ticker_news)} recent headline(s) with negative tone. "
                            f"Latest: \"{ticker_news[0]['title'][:80]}\"",
@@ -213,7 +240,7 @@ def _news_signals(surveillance_data: dict, watchlist: list[str]) -> list[dict]:
         elif avg_sentiment > 0.3:
             signals.append(_sig(
                 type_    = "news_positive",
-                severity = "low",
+                severity = Severity.LOW,
                 title    = f"🟢 Positive news: {ticker}",
                 detail   = f"{len(ticker_news)} recent headline(s) with positive tone. "
                            f"Latest: \"{ticker_news[0]['title'][:80]}\"",
@@ -231,7 +258,7 @@ def _insider_signals(surveillance_data: dict) -> list[dict]:
     insider = surveillance_data.get("insider", {})
     signals = []
     for sig in insider.get("cluster_signals", []):
-        signals.append({**sig, "source": "OpenInsider", "ts": datetime.now().isoformat()})
+        signals.append({**sig, "source": "OpenInsider", "ts": datetime.now(timezone.utc).isoformat()})
     return signals
 
 
@@ -244,7 +271,7 @@ def _edgar_signals(surveillance_data: dict) -> list[dict]:
             latest = events[0]
             signals.append(_sig(
                 type_    = "material_event",
-                severity = "medium",
+                severity = Severity.MEDIUM,
                 title    = f"📋 SEC 8-K filing: {ticker}",
                 detail   = f"Material event filed {latest.get('date', 'recently')}. "
                            f"Review filing for operational or financial changes.",
@@ -309,12 +336,11 @@ def run_signals(
             seen.add(key)
             deduped.append(s)
 
-    # Sort: high → medium → low → info
-    _order = {"high": 0, "medium": 1, "low": 2, "info": 3}
-    deduped.sort(key=lambda s: _order.get(s.get("severity", "info"), 99))
+    # Sort: high → medium → low → info  (uses module-level _SEVERITY_ORDER)
+    deduped.sort(key=lambda s: _SEVERITY_ORDER.get(s.get("severity", Severity.INFO), 99))
 
     # Persist
-    history["last_run"]       = datetime.now().isoformat()
+    history["last_run"]       = datetime.now(timezone.utc).isoformat()
     history["score_snapshot"] = new_snapshot
     history["signals"]        = deduped
     _save_history(history)
@@ -324,10 +350,10 @@ def run_signals(
 
 def signals_summary(signals: list[dict]) -> dict:
     """Compute summary counts for the briefing header."""
-    counts = {"high": 0, "medium": 0, "low": 0, "info": 0}
-    by_type = {}
+    counts = {Severity.HIGH: 0, Severity.MEDIUM: 0, Severity.LOW: 0, Severity.INFO: 0}
+    by_type: dict[str, int] = {}
     for s in signals:
-        sev = s.get("severity", "info")
+        sev = s.get("severity", Severity.INFO)
         counts[sev] = counts.get(sev, 0) + 1
         t = s.get("type", "unknown")
         by_type[t] = by_type.get(t, 0) + 1
