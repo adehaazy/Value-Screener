@@ -150,7 +150,7 @@ def build_data_context(inst: dict) -> str:
             f"Quantitative score:  {_fmt(inst.get('score'), decimals=1)} / 100",
             f"Quality gate:        {'PASS' if inst.get('quality_passes') else 'FAIL'}",
         ]
-        reasons = inst.get("quality_reasons", [])
+        reasons = inst.get("quality_fail_reasons", [])  # written by scoring.py as quality_fail_reasons
         if reasons:
             lines.append(f"Quality fail reasons: {'; '.join(reasons)}")
         flags = inst.get("quality_flags", [])

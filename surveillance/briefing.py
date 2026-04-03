@@ -96,7 +96,7 @@ def _build_opportunities_section(instruments: list[dict], top_n: int = 5) -> lis
     eligible = [
         inst for inst in instruments
         if inst.get("ok") and inst.get("score") is not None
-        and inst.get("quality_pass", True) is not False
+        and inst.get("quality_passes", True) is not False
     ]
     eligible.sort(key=lambda x: x.get("score", 0), reverse=True)
     top = eligible[:top_n]

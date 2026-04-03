@@ -31,7 +31,7 @@ def stock_verdict(row: dict, sector_medians: dict) -> str:
     """Generate a plain-English verdict for a stock."""
 
     passes = row.get("quality_passes", False)
-    reasons = row.get("quality_reasons", [])
+    reasons = row.get("quality_fail_reasons", [])  # written by scoring.py as quality_fail_reasons
     flags   = row.get("quality_flags", [])
     score   = _f(row.get("score"))
     sector  = row.get("sector", "")
@@ -105,11 +105,13 @@ def stock_verdict(row: dict, sector_medians: dict) -> str:
         val = "Valuation data limited"
 
     # Income / price sentence
+    # div_yield stored as decimal from yfinance (e.g. 0.04 = 4%); convert to % for display/comparison
+    div_pct = div * 100 if div is not None else None
     extras = []
-    if div and div >= 3.0:
-        extras.append(f"{div:.1f}% dividend yield adds income appeal")
-    elif div and div >= 1.0:
-        extras.append(f"{div:.1f}% dividend yield")
+    if div_pct and div_pct >= 3.0:
+        extras.append(f"{div_pct:.1f}% dividend yield adds income appeal")
+    elif div_pct and div_pct >= 1.0:
+        extras.append(f"{div_pct:.1f}% dividend yield")
 
     if pct_h and pct_h < -20:
         extras.append(f"{abs(pct_h):.0f}% below its 52-week high — potential entry opportunity")
@@ -187,7 +189,11 @@ def money_market_verdict(row: dict) -> str:
     ter   = _f(row.get("ter"))
     aum   = _f(row.get("aum"))
 
-    net_yld = (yld - ter * 100) if (yld and ter) else yld
+    # Both div_yield and ter are stored as decimals from yfinance (e.g. 0.04 = 4%, 0.002 = 0.2%)
+    # Convert to percent for arithmetic and display
+    yld_pct = yld * 100 if yld is not None else None
+    ter_pct = ter * 100 if ter is not None else None
+    net_yld = (yld_pct - ter_pct) if (yld_pct is not None and ter_pct is not None) else yld_pct
 
     # Yield sentence
     if net_yld is None:

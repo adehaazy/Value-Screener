@@ -580,40 +580,49 @@ def _pill(label, value, cls=""):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _build_quality_thresholds():
+    # scoring.py expects thresholds in the same units it uses internally:
+    #   min_roe / min_profit_margin → percent (e.g. 8 means 8%), because _passes_quality does roe*100 < min_roe
+    #   max_de                      → ratio (e.g. 3 means 3.0×)
+    #   require_pos_fcf             → bool
+    # Key names must match exactly what _passes_quality() reads via qt.get(...)
     p = st.session_state.prefs
     return {
-        "min_roe":             p.get("min_roe", 10) / 100,            # slider %, convert to decimal
-        "max_debt_equity":     p.get("max_de",   2),                   # ratio
-        "min_profit_margin":   p.get("min_profit_margin", 2) / 100,   # slider %, convert to decimal
-        "require_positive_fcf": p.get("require_pos_fcf", True),
+        "min_roe":           p.get("min_roe", 10),           # % — do NOT divide; scoring.py does roe*100 < min_roe
+        "max_de":            p.get("max_de",   2),           # ratio
+        "min_profit_margin": p.get("min_profit_margin", 2),  # % — do NOT divide; scoring.py does pm*100 < min_pm
+        "require_pos_fcf":   p.get("require_pos_fcf", True),
     }
 
 
 def _build_scoring_weights() -> dict:
     """
-    Returns per-asset-class weight dicts from user prefs.
-    These are passed into the scoring functions which already normalise by sum(wts).
+    Returns a flat weight dict keyed exactly as scoring.py expects (wt_* prefix).
+    scoring.py reads e.g. weights.get("wt_pe", 30), weights.get("wt_evebitda", 30),
+    so the keys here must match those names exactly.
     """
     p = st.session_state.prefs
     return {
-        "stock": {
-            "pe":       p.get("wt_pe",       30),
-            "pb":       p.get("wt_pb",       20),
-            "evebitda": p.get("wt_evebitda", 20),
-            "divyield": p.get("wt_divyield", 15),
-            "w52":      p.get("wt_52w",      15),
-        },
-        "etf": {
-            "aum": p.get("wt_etf_aum", 35),
-            "ter": p.get("wt_etf_ter", 35),
-            "ret": p.get("wt_etf_ret", 20),
-            "mom": p.get("wt_etf_mom", 10),
-        },
-        "mm": {
-            "yield": p.get("wt_mm_yield", 60),
-            "aum":   p.get("wt_mm_aum",   25),
-            "ter":   p.get("wt_mm_ter",   15),
-        },
+        # Non-financial stocks
+        "wt_pe":       p.get("wt_pe",       30),
+        "wt_pb":       p.get("wt_pb",       20),
+        "wt_evebitda": p.get("wt_evebitda", 20),
+        "wt_pfcf":     p.get("wt_pfcf",     25),   # P/FCF weight (separate from P/E)
+        "wt_divyield": p.get("wt_divyield", 15),
+        "wt_52w":      p.get("wt_52w",      15),
+        # Financial stocks
+        "wt_fin_ptb":   p.get("wt_fin_ptb",   35),
+        "wt_fin_roe":   p.get("wt_fin_roe",   30),
+        "wt_fin_yield": p.get("wt_fin_yield", 20),
+        "wt_fin_52w":   p.get("wt_fin_52w",   15),
+        # ETFs
+        "wt_etf_aum": p.get("wt_etf_aum", 35),
+        "wt_etf_ter": p.get("wt_etf_ter", 35),
+        "wt_etf_ret": p.get("wt_etf_ret", 20),
+        "wt_etf_mom": p.get("wt_etf_mom", 10),
+        # Money market
+        "wt_mm_yield": p.get("wt_mm_yield", 60),
+        "wt_mm_aum":   p.get("wt_mm_aum",   25),
+        "wt_mm_ter":   p.get("wt_mm_ter",   15),
     }
 
 

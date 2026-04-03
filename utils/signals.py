@@ -120,7 +120,7 @@ def _value_threshold_signals(instruments: list[dict]) -> list[dict]:
         score = inst.get("score")
         if score is None or score < 75:
             continue
-        if inst.get("quality_pass") is False:
+        if inst.get("quality_passes") is False:
             continue  # Only flag quality-passing instruments
 
         name   = inst.get("name", inst.get("ticker", ""))
@@ -144,7 +144,7 @@ def _near_52w_low_signals(instruments: list[dict]) -> list[dict]:
     for inst in instruments:
         if not inst.get("ok") or inst.get("asset_class") != "Stock":
             continue
-        if inst.get("quality_pass") is False:
+        if inst.get("quality_passes") is False:
             continue
         pct = inst.get("pct_from_high")
         if pct is None or pct > -50:
