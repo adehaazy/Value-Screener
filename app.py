@@ -951,13 +951,34 @@ header[data-testid="stHeader"] { display: none !important; }
   font-weight: 600 !important;
 }
 
-/* ── Alerts / info boxes ── */
+/* ── Alerts / info boxes — override all colour variants to monochrome ── */
 .stAlert {
   border-radius: 0 !important;
   font-family: var(--vs-sans) !important;
   font-size: 13px !important;
   border: 1px solid #D4D4D2 !important;
+  border-left: 3px solid #777777 !important;
   box-shadow: none !important;
+  background: #FFFFFF !important;
+  color: #444444 !important;
+}
+/* Remove coloured backgrounds from warning/error/info/success variants */
+[data-testid="stAlert"] {
+  background: #FFFFFF !important;
+  border: 1px solid #D4D4D2 !important;
+  border-left: 3px solid #777777 !important;
+  border-radius: 0 !important;
+  color: #444444 !important;
+}
+[data-testid="stAlert"] p,
+[data-testid="stAlert"] span,
+[data-testid="stAlert"] div {
+  color: #444444 !important;
+  font-family: var(--vs-sans) !important;
+}
+/* Hide the coloured icon in alerts */
+[data-testid="stAlert"] [data-testid="stAlertIcon"] {
+  display: none !important;
 }
 
 /* ── Streamlit dataframe / table ── */
@@ -1003,6 +1024,67 @@ header[data-testid="stHeader"] { display: none !important; }
 }
 .stApp .stCaption { font-size: 11px !important; color: #777777 !important; font-family: var(--vs-sans) !important; }
 .stApp hr { border-color: #D4D4D2 !important; }
+
+/* ── Mobile responsive overrides ── */
+@media (max-width: 768px) {
+  /* Reduce page padding */
+  .block-container {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  /* Nav bar: compress and allow scroll */
+  .vs-topnav {
+    padding: 0 16px !important;
+    margin-left: -16px !important;
+    margin-right: -16px !important;
+    width: calc(100% + 32px) !important;
+  }
+  .vs-topnav-links {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  .vs-topnav-link {
+    padding: 0 12px !important;
+    font-size: 10px !important;
+    white-space: nowrap !important;
+  }
+  .vs-topnav-wordmark { font-size: 15px !important; }
+  .vs-topnav-settings { display: none !important; }
+
+  /* Hero band */
+  .vs-hero {
+    padding: 24px 16px 20px !important;
+    margin-left: -16px !important;
+    margin-right: -16px !important;
+    width: calc(100% + 32px) !important;
+  }
+  .vs-hero-greeting { font-size: 26px !important; }
+  .vs-hero-timestamp { font-size: 10px !important; }
+  .vs-hero-stats { grid-template-columns: repeat(2, 1fr) !important; }
+  .vs-hero-stat-val { font-size: 24px !important; }
+
+  /* Stat bar: two cells per row */
+  .vs-statbar { flex-wrap: wrap !important; }
+  .vs-statbar-cell { flex: 0 0 50% !important; border-right: none !important; border-bottom: 1px solid #D4D4D2 !important; }
+  .vs-statbar-cell:nth-child(odd) { border-right: 1px solid #D4D4D2 !important; }
+  .vs-statbar-cell:last-child { border-bottom: none !important; }
+  .vs-statbar-val { font-size: 20px !important; }
+
+  /* Cards: full width, slightly less padding */
+  .card { padding: 18px !important; }
+  .card-name { font-size: 18px !important; }
+  .card-score-num { font-size: 28px !important; }
+
+  /* Section header text */
+  .vs-section-title { font-size: 11px !important; }
+}
+
+@media (max-width: 480px) {
+  .vs-topnav-link { padding: 0 10px !important; font-size: 9px !important; }
+  .vs-hero-greeting { font-size: 22px !important; }
+  .vs-hero-stats { grid-template-columns: repeat(2, 1fr) !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1443,15 +1525,23 @@ def _render_topnav():
     st.markdown(nav_html, unsafe_allow_html=True)
 
     # ── Invisible Streamlit buttons wired to nav clicks via JS ───────────────
-    # We render zero-height buttons then use JS to connect the nav spans to them.
-    btn_style = (
+    # Sentinel div immediately before the hidden button row — CSS hides the next sibling.
+    st.markdown(
         '<style>'
-        '.vs-nav-btn-row { height:0; overflow:hidden; position:absolute; '
-        'pointer-events:none; opacity:0; }'
+        '.vs-nav-sentinel + div,'
+        '.vs-nav-sentinel + div > div,'
+        '.vs-nav-sentinel ~ div[data-testid="stHorizontalBlock"],'
+        '.vs-nav-sentinel ~ [data-testid="stHorizontalBlock"] {'
+        '  display:none !important;'
+        '  height:0 !important;'
+        '  overflow:hidden !important;'
+        '  margin:0 !important;'
+        '  padding:0 !important;'
+        '}'
         '</style>'
-        '<div class="vs-nav-btn-row">'
+        '<div class="vs-nav-sentinel" style="height:0;overflow:hidden;margin:0;padding:0"></div>',
+        unsafe_allow_html=True,
     )
-    st.markdown(btn_style, unsafe_allow_html=True)
 
     all_nav = nav_pages + [("Settings", "settings")]
     btn_cols = st.columns(len(all_nav))
@@ -1461,20 +1551,50 @@ def _render_topnav():
                 st.session_state.page = key
                 st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="vs-nav-sentinel-end" style="height:0;overflow:hidden;margin:0;padding:0"></div>',
+        unsafe_allow_html=True,
+    )
 
-    # ── JS: wire nav span clicks to hidden buttons ────────────────────────────
+    # ── JS: wire nav span clicks to hidden buttons + hide the button row ─────
     js = """
     <script>
     (function() {
+        var NAV_KEYS = ['home','deepdive','screener','compare','briefing','settings'];
+
+        function hideNavBtns() {
+            // Find all Streamlit buttons whose text matches a nav key and hide their
+            // column/block ancestors up to (but not including) the main block container.
+            NAV_KEYS.forEach(function(key) {
+                document.querySelectorAll('button').forEach(function(btn) {
+                    if (btn.innerText.trim().toLowerCase() === key) {
+                        // Walk up to find the stHorizontalBlock or column wrapper and hide it
+                        var el = btn;
+                        for (var depth = 0; depth < 8; depth++) {
+                            el = el.parentElement;
+                            if (!el) break;
+                            var tid = el.getAttribute('data-testid') || '';
+                            if (tid === 'stHorizontalBlock' || tid === 'column') {
+                                // Hide the whole horizontal block (the row of all nav buttons)
+                                if (tid === 'stHorizontalBlock') {
+                                    el.style.cssText = 'display:none!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;';
+                                }
+                                break;
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
         function wireNav() {
             var pairs = [
-                ['topnav_home',     'topnav_btn_home'],
-                ['topnav_deepdive', 'topnav_btn_deepdive'],
-                ['topnav_screener', 'topnav_btn_screener'],
-                ['topnav_compare',  'topnav_btn_compare'],
-                ['topnav_briefing', 'topnav_btn_briefing'],
-                ['topnav_settings', 'topnav_btn_settings'],
+                ['topnav_home',     'home'],
+                ['topnav_deepdive', 'deepdive'],
+                ['topnav_screener', 'screener'],
+                ['topnav_compare',  'compare'],
+                ['topnav_briefing', 'briefing'],
+                ['topnav_settings', 'settings'],
             ];
             pairs.forEach(function(p) {
                 var span = document.getElementById(p[0]);
@@ -1484,13 +1604,13 @@ def _render_topnav():
                 span.addEventListener('click', function() {
                     var btns = document.querySelectorAll('button');
                     for (var i = 0; i < btns.length; i++) {
-                        if (btns[i].innerText.trim().toLowerCase() ===
-                            p[1].replace('topnav_btn_','').toLowerCase()) {
+                        if (btns[i].innerText.trim().toLowerCase() === p[1]) {
                             btns[i].click(); break;
                         }
                     }
                 });
             });
+            hideNavBtns();
         }
         var obs = new MutationObserver(wireNav);
         obs.observe(document.body, {childList:true, subtree:true});
@@ -1530,7 +1650,12 @@ def _render_data_controls():
                 _freshness = "Live" if _age < 1 else (f"{int(_age)}h old" if _age < 8 else f"Stale — {int(_age)}h")
                 st.caption(f"Data: {_freshness}")
                 if _age >= 6 and st.session_state.instruments:
-                    st.warning(f"Prices {int(_age)}h old — refresh for live data.")
+                    st.markdown(
+                        f'<div style="background:#FFFFFF;border:1px solid #D4D4D2;border-left:3px solid #777777;'
+                        f'padding:8px 12px;font-family:var(--vs-sans),sans-serif;font-size:12px;color:#444444;'
+                        f'margin-top:4px;">Prices {int(_age)}h old — refresh for live data.</div>',
+                        unsafe_allow_html=True,
+                    )
             else:
                 st.caption("No data loaded")
         with col_btn:
@@ -1563,7 +1688,12 @@ def _render_data_controls():
                     })
                     st.rerun()
                 else:
-                    st.warning("Select at least one market above.")
+                    st.markdown(
+                        '<div style="background:#FFFFFF;border:1px solid #D4D4D2;border-left:3px solid #777777;'
+                        'padding:8px 12px;font-family:var(--vs-sans),sans-serif;font-size:12px;color:#444444;'
+                        'margin-top:4px;">Select at least one market above.</div>',
+                        unsafe_allow_html=True,
+                    )
         with col_toggle:
             _next_event = _next_market_event()
             _auto_on = st.session_state.auto_refresh
@@ -2070,10 +2200,27 @@ def _home_summary_tile(col, num, label, colour="#1A1A1A"):
 
 
 def _section_header(label, page_key=None):
-    """Render the BBC-style section header with optional 'View all →' link."""
+    """Render the BBC-style section header with optional 'View all →' link.
+
+    Navigation is wired entirely via JS clicking the already-rendered topnav hidden
+    button for the target page — no additional hidden Streamlit button is created here.
+    """
     link_html = ""
+    wire_js = ""
     if page_key:
-        link_html = f'<span class="vs-section-link" id="sec_link_{page_key}">View all →</span>'
+        link_id = f"sec_link_{page_key}_{label[:6].replace(' ','_')}"
+        link_html = f'<span class="vs-section-link" id="{link_id}">View all →</span>'
+        # JS: clicking the section link triggers the matching topnav hidden button
+        wire_js = (
+            f'<script>'
+            f'(function(){{var lnk=document.getElementById("{link_id}");'
+            f'if(lnk&&!lnk._wired){{lnk._wired=true;'
+            f'lnk.addEventListener("click",function(){{'
+            f'var btns=document.querySelectorAll("button");'
+            f'for(var i=0;i<btns.length;i++){{'
+            f'if(btns[i].innerText.trim().toLowerCase()==="{page_key.lower()}"){{btns[i].click();break;}}'
+            f'}}}});}}}})();</script>'
+        )
 
     st.markdown(
         f'<div class="vs-section-header">'
@@ -2082,25 +2229,10 @@ def _section_header(label, page_key=None):
         f'{link_html}'
         f'</div>'
         f'<div class="vs-section-rule"></div>'
-        f'</div>',
+        f'</div>'
+        f'{wire_js}',
         unsafe_allow_html=True,
     )
-    if page_key:
-        # Hidden button wired via JS
-        if st.button(f"→ {label}", key=f"sec_nav_{page_key}_{label[:8]}", help=f"Go to {page_key}"):
-            st.session_state.page = page_key
-            st.rerun()
-        st.markdown(
-            f'<script>'
-            f'(function(){{var lnk=document.getElementById("sec_link_{page_key}");'
-            f'if(lnk&&!lnk._wired){{lnk._wired=true;lnk.style.cursor="pointer";'
-            f'lnk.addEventListener("click",function(){{'
-            f'var btns=document.querySelectorAll("button");'
-            f'for(var i=0;i<btns.length;i++){{'
-            f'if(btns[i].innerText.trim().startsWith("→ {label[:8]}")){{btns[i].click();break;}}'
-            f'}}}});}}}})();</script>',
-            unsafe_allow_html=True,
-        )
 
 
 # Keep old _nav_heading as thin wrapper for any legacy callers
