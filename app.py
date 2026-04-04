@@ -72,19 +72,24 @@ def _check_login():
     # ── Centred login card ────────────────────────────────────────────────────
     st.markdown(
         '<style>'
-        '@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@300;400;500&display=swap");'
-        'body,.stApp{background:#FAF8F5!important}'
+        '@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600&display=swap");'
+        'body,.stApp{background:#F0F0EE!important;-webkit-font-smoothing:antialiased}'
         'header[data-testid="stHeader"]{display:none}'
         '[data-testid="stSidebar"]{display:none}'
-        '.login-wrap{display:flex;align-items:center;justify-content:center;min-height:90vh;background:#FAF8F5}'
-        '.login-card{background:#FFFFFF;border:1px solid #E2DDD6;border-radius:14px;'
-        'padding:3rem 2.75rem 2.5rem 2.75rem;width:100%;max-width:400px;text-align:center;'
-        'box-shadow:0 4px 24px rgba(13,27,42,0.07)}'
-        '.login-rule{width:32px;height:2px;background:#B8924A;margin:0 auto 1.5rem auto;border-radius:2px}'
-        '.login-title{font-family:"Playfair Display",Georgia,serif;font-size:1.75rem;font-weight:700;'
-        'color:#0D1B2A;margin-bottom:0.3rem;letter-spacing:-0.01em}'
-        '.login-sub{font-family:"Inter",-apple-system,sans-serif;font-size:0.82rem;'
-        'color:#6B7D92;margin-bottom:0;letter-spacing:0.04em;text-transform:uppercase}'
+        '.login-wrap{display:flex;align-items:center;justify-content:center;min-height:90vh;background:#F0F0EE}'
+        '.login-card{background:#FFFFFF;border:1px solid #D4D4D2;border-radius:0;'
+        'padding:48px 44px 40px 44px;width:100%;max-width:400px;text-align:center}'
+        '.login-rule{width:40px;height:2px;background:#1A3A5C;margin:0 auto 28px auto}'
+        '.login-title{font-family:"Playfair Display",Georgia,serif;font-size:28px;font-weight:700;'
+        'color:#1A1A1A;margin-bottom:6px;letter-spacing:-0.3px;line-height:1.1}'
+        '.login-sub{font-family:"Inter",-apple-system,sans-serif;font-size:11px;font-weight:600;'
+        'color:#777777;margin-bottom:0;letter-spacing:0.08em;text-transform:uppercase}'
+        '.stButton>button{border-radius:0!important;font-family:"Inter",sans-serif!important;'
+        'font-size:11px!important;font-weight:600!important;text-transform:uppercase!important;'
+        'letter-spacing:0.08em!important;background:#1A3A5C!important;border:none!important}'
+        '.stTextInput input{border-radius:0!important;border:1px solid #D4D4D2!important;'
+        'font-family:"Inter",sans-serif!important;font-size:13px!important}'
+        '.stTextInput input:focus{border-color:#1A3A5C!important;box-shadow:none!important}'
         '</style>'
         '<div class="login-wrap"><div class="login-card">'
         '<div class="login-rule"></div>'
@@ -1327,7 +1332,7 @@ _do_auto_refresh, _refresh_reason = _should_auto_refresh()
 if _do_auto_refresh:
     _groups = st.session_state.prefs.get("groups", list(UNIVERSE.keys())[:2])
     if _groups:
-        _prog = st.sidebar.progress(0, text=f"Auto-refresh: {_refresh_reason}…")
+        _prog = st.progress(0, text=f"Auto-refresh: {_refresh_reason}…")
         def _auto_cb(pct, msg):
             _prog.progress(pct, text=msg)
         _scored, _sm = load_all_data(_groups, progress_cb=_auto_cb)
@@ -1395,137 +1400,214 @@ def apply_filters(instruments: list, include_excluded=False) -> list:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR
+# TOP NAVIGATION BAR
 # ══════════════════════════════════════════════════════════════════════════════
 
-with st.sidebar:
-    # ── Branding ─────────────────────────────────────────────────────────────
-    st.markdown(
-        '<div style="padding:0.25rem 0 1rem 0">'
-        '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:1.25rem;'
-        'font-weight:700;color:#FFFFFF;letter-spacing:-0.01em;line-height:1.2">Value Screener</div>'
-        '<div style="font-family:\'Inter\',sans-serif;font-size:0.65rem;color:rgba(203,213,224,0.55);'
-        'letter-spacing:0.10em;text-transform:uppercase;margin-top:4px">'
-        'Quality &middot; Fair Price &middot; Long-term</div>'
-        '<div style="width:24px;height:1px;background:#B8924A;margin-top:10px;border-radius:1px"></div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.divider()
-
-    # ── Navigation ──────────────────────────────────────────────────────────
+def _render_topnav():
+    """Render the sticky horizontal top navigation bar."""
     _latest_signals  = load_latest_signals()
     _high_count      = sum(1 for s in _latest_signals if s.get("severity") == "high")
     _scoring_changed = st.session_state.scoring_changed
-    _settings_label  = "Settings  ●" if _scoring_changed else "Settings"
-    _briefing_label  = f"Briefing  ·  {_high_count} alerts" if _high_count > 0 else "Briefing"
+    current_page     = st.session_state.page
 
-    pages = {
-        "Home":            "home",
-        "Deepdive":        "deepdive",
-        "Screen":          "screener",
-        "Compare":         "compare",
-        _briefing_label:   "briefing",
-        _settings_label:   "settings",
-    }
-    for label, key in pages.items():
-        active = st.session_state.page == key
-        if st.button(label, key=f"nav_{key}",
-                     type="primary" if active else "secondary",
-                     use_container_width=True):
-            st.session_state.page = key
-            st.rerun()
+    nav_pages = [
+        ("Home",     "home"),
+        ("Deepdive", "deepdive"),
+        ("Screen",   "screener"),
+        ("Compare",  "compare"),
+        ("Briefing", "briefing"),
+    ]
 
-    st.divider()
+    links_html = ""
+    for label, key in nav_pages:
+        display = label
+        if key == "briefing" and _high_count > 0:
+            display = f"Briefing · {_high_count}"
+        active_cls = " active" if current_page == key else ""
+        links_html += (
+            f'<span class="vs-topnav-link{active_cls}" '
+            f'id="topnav_{key}">{display}</span>'
+        )
 
-    # ── Data & Markets ───────────────────────────────────────────────────────
-    st.markdown('<div class="section-header">Markets</div>', unsafe_allow_html=True)
+    settings_dot = '<span class="vs-topnav-settings-dot"> ●</span>' if _scoring_changed else ""
+    settings_cls = " active" if current_page == "settings" else ""
 
-    chosen_groups = st.multiselect(
-        "Markets",
-        list(UNIVERSE.keys()),
-        default=st.session_state.prefs.get("groups", ["🇬🇧 UK Stocks", "📦 ETFs & Index Funds"]),
-        label_visibility="collapsed",
-        help="Select which markets to include in the screen",
+    nav_html = (
+        f'<div class="vs-topnav">'
+        f'<span class="vs-topnav-wordmark">Value Screener</span>'
+        f'<div class="vs-topnav-links">{links_html}</div>'
+        f'<span class="vs-topnav-settings{settings_cls}" id="topnav_settings">'
+        f'Settings{settings_dot}</span>'
+        f'</div>'
     )
-    if set(chosen_groups) != set(st.session_state.prefs.get("groups", [])):
-        st.session_state.prefs["groups"] = chosen_groups
-        _save_json("prefs.json", st.session_state.prefs)
+    st.markdown(nav_html, unsafe_allow_html=True)
 
-    # Data freshness indicator
-    _age = cache_age_hours()
-    if _age is not None:
-        _freshness = "Live data" if _age < 1 else ("%dh old" % int(_age) if _age < 8 else "Data stale — %dh" % int(_age))
-        st.caption(_freshness)
-        # Show stale-data warning so user knows prices may be outdated
-        if _age >= 6 and st.session_state.instruments:
-            st.warning(
-                "Prices last updated **%dh ago**. "
-                "Click **Refresh Now** for live data." % int(_age),
-                icon="⏰",
-            )
-    else:
-        st.caption("No data loaded")
+    # ── Invisible Streamlit buttons wired to nav clicks via JS ───────────────
+    # We render zero-height buttons then use JS to connect the nav spans to them.
+    btn_style = (
+        '<style>'
+        '.vs-nav-btn-row { height:0; overflow:hidden; position:absolute; '
+        'pointer-events:none; opacity:0; }'
+        '</style>'
+        '<div class="vs-nav-btn-row">'
+    )
+    st.markdown(btn_style, unsafe_allow_html=True)
 
-    fetch_label = "Refresh Now" if st.session_state.instruments else "Load Data"
-    if st.button(fetch_label, type="primary", use_container_width=True):
-        if chosen_groups:
-            prog = st.progress(0, text="Starting…")
-            def _cb(pct, msg):
-                prog.progress(pct, text=msg)
-            scored, sm = load_all_data(chosen_groups, progress_cb=_cb)
-            prog.empty()
-            st.session_state.instruments    = scored
-            st.session_state.sector_medians = sm
-            st.session_state.last_fetch     = datetime.now().strftime("%H:%M  %d %b %Y")
-            st.session_state.last_auto_refresh = datetime.now(timezone.utc).isoformat()
-            ok = [x for x in scored if x.get("ok")]
-            save_scan_summary({
-                "total": len(ok),
-                "stocks_passing_quality": sum(
-                    1 for x in ok
-                    if x.get("asset_class") == "Stock" and x.get("quality_passes")
-                ),
-                "strong_value":  sum(1 for x in ok if (_f(x.get("score")) or 0) >= 75),
-                "top_picks": [
-                    {"ticker": x["ticker"], "name": x["name"],
-                     "score": x.get("score"), "verdict": x.get("verdict", "")}
-                    for x in sorted(ok, key=lambda r: _f(r.get("score")) or 0, reverse=True)[:5]
-                ],
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-            })
-            st.rerun()
-        else:
-            st.warning("Select at least one market above.")
+    all_nav = nav_pages + [("Settings", "settings")]
+    btn_cols = st.columns(len(all_nav))
+    for i, (label, key) in enumerate(all_nav):
+        with btn_cols[i]:
+            if st.button(label, key=f"topnav_btn_{key}"):
+                st.session_state.page = key
+                st.rerun()
 
-    # ── Auto-refresh toggle + next event ─────────────────────────────────────
-    _next_event = _next_market_event()
-    _auto_on = st.session_state.auto_refresh
-    _auto_label = "Auto-refresh: on" if _auto_on else "Auto-refresh: off"
-    if st.toggle(_auto_label, value=_auto_on, key="auto_refresh_toggle",
-                 help="Automatically refresh prices at each market open and close (London, Frankfurt, New York)"):
-        st.session_state.auto_refresh = True
-    else:
-        st.session_state.auto_refresh = False
-    if _next_event and st.session_state.auto_refresh:
-        st.caption(f"Next: {_next_event}")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.divider()
+    # ── JS: wire nav span clicks to hidden buttons ────────────────────────────
+    js = """
+    <script>
+    (function() {
+        function wireNav() {
+            var pairs = [
+                ['topnav_home',     'topnav_btn_home'],
+                ['topnav_deepdive', 'topnav_btn_deepdive'],
+                ['topnav_screener', 'topnav_btn_screener'],
+                ['topnav_compare',  'topnav_btn_compare'],
+                ['topnav_briefing', 'topnav_btn_briefing'],
+                ['topnav_settings', 'topnav_btn_settings'],
+            ];
+            pairs.forEach(function(p) {
+                var span = document.getElementById(p[0]);
+                if (!span || span._wired) return;
+                span._wired = true;
+                span.style.cursor = 'pointer';
+                span.addEventListener('click', function() {
+                    var btns = document.querySelectorAll('button');
+                    for (var i = 0; i < btns.length; i++) {
+                        if (btns[i].innerText.trim().toLowerCase() ===
+                            p[1].replace('topnav_btn_','').toLowerCase()) {
+                            btns[i].click(); break;
+                        }
+                    }
+                });
+            });
+        }
+        var obs = new MutationObserver(wireNav);
+        obs.observe(document.body, {childList:true, subtree:true});
+        wireNav();
+    })();
+    </script>
+    """
+    st.markdown(js, unsafe_allow_html=True)
 
-    # ── Filters (only shown on Screen page) ──────────────────────────────────
-    current_page = st.session_state.page
-    if current_page == "screener":
-        st.markdown('<div class="section-header">Filters</div>', unsafe_allow_html=True)
+
+_render_topnav()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DATA CONTROLS (Markets + Filters) — rendered inline on relevant pages
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _render_data_controls():
+    """Markets selector + refresh button, shown as a top-of-page control strip."""
+    chosen_groups = st.session_state.prefs.get("groups", ["🇬🇧 UK Stocks", "📦 ETFs & Index Funds"])
+
+    with st.expander("⚙ Markets & Data", expanded=not st.session_state.instruments):
+        chosen_groups = st.multiselect(
+            "Markets to load",
+            list(UNIVERSE.keys()),
+            default=chosen_groups,
+            help="Select which markets to include in the screen",
+        )
+        if set(chosen_groups) != set(st.session_state.prefs.get("groups", [])):
+            st.session_state.prefs["groups"] = chosen_groups
+            _save_json("prefs.json", st.session_state.prefs)
+
+        _age = cache_age_hours()
+        col_info, col_btn, col_toggle = st.columns([3, 2, 3])
+        with col_info:
+            if _age is not None:
+                _freshness = "Live" if _age < 1 else (f"{int(_age)}h old" if _age < 8 else f"Stale — {int(_age)}h")
+                st.caption(f"Data: {_freshness}")
+                if _age >= 6 and st.session_state.instruments:
+                    st.warning(f"Prices {int(_age)}h old — refresh for live data.")
+            else:
+                st.caption("No data loaded")
+        with col_btn:
+            fetch_label = "Refresh Now" if st.session_state.instruments else "Load Data"
+            if st.button(fetch_label, type="primary", use_container_width=True, key="data_ctrl_fetch"):
+                if chosen_groups:
+                    prog = st.progress(0, text="Starting…")
+                    def _cb(pct, msg):
+                        prog.progress(pct, text=msg)
+                    scored, sm = load_all_data(chosen_groups, progress_cb=_cb)
+                    prog.empty()
+                    st.session_state.instruments    = scored
+                    st.session_state.sector_medians = sm
+                    st.session_state.last_fetch     = datetime.now().strftime("%H:%M  %d %b %Y")
+                    st.session_state.last_auto_refresh = datetime.now(timezone.utc).isoformat()
+                    ok = [x for x in scored if x.get("ok")]
+                    save_scan_summary({
+                        "total": len(ok),
+                        "stocks_passing_quality": sum(
+                            1 for x in ok
+                            if x.get("asset_class") == "Stock" and x.get("quality_passes")
+                        ),
+                        "strong_value":  sum(1 for x in ok if (_f(x.get("score")) or 0) >= 75),
+                        "top_picks": [
+                            {"ticker": x["ticker"], "name": x["name"],
+                             "score": x.get("score"), "verdict": x.get("verdict", "")}
+                            for x in sorted(ok, key=lambda r: _f(r.get("score")) or 0, reverse=True)[:5]
+                        ],
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    })
+                    st.rerun()
+                else:
+                    st.warning("Select at least one market above.")
+        with col_toggle:
+            _next_event = _next_market_event()
+            _auto_on = st.session_state.auto_refresh
+            _auto_label = "Auto-refresh on" if _auto_on else "Auto-refresh off"
+            if st.toggle(_auto_label, value=_auto_on, key="auto_refresh_toggle",
+                         help="Automatically refresh prices at each market open and close"):
+                st.session_state.auto_refresh = True
+            else:
+                st.session_state.auto_refresh = False
+            if _next_event and st.session_state.auto_refresh:
+                st.caption(f"Next: {_next_event}")
+
+
+def _render_screen_filters():
+    """Filter sliders for the Screener page."""
+    with st.expander("⚙ Filters", expanded=False):
         p = st.session_state.prefs
+        fc1, fc2, fc3, fc4 = st.columns(4)
+        with fc1:
+            min_score = st.slider("Min score", 0, 100, int(p.get("min_score", 0)), 5,
+                                  help="Only show instruments scoring at least this")
+        with fc2:
+            min_yield = st.slider("Min yield (%)", 0.0, 8.0, float(p.get("min_yield", 0.0)), 0.5,
+                                  help="Minimum dividend or distribution yield")
+        with fc3:
+            max_pe = st.slider("Max P/E", 5, 100, int(p.get("max_pe", 100)), 5,
+                               help="Filter out expensive stocks. 100 = show all.")
+        with fc4:
+            max_ter = st.slider("Max TER (%)", 0.05, 1.5, float(p.get("max_ter", 1.5)), 0.05,
+                                help="Maximum annual fee for ETFs")
 
-        min_score = st.slider("Min score",          0,   100, int(p.get("min_score", 0)),   5,
-                              help="Only show instruments scoring at least this")
-        min_yield = st.slider("Min yield (%)",      0.0,  8.0, float(p.get("min_yield", 0.0)), 0.5,
-                              help="Minimum dividend or distribution yield")
-        max_pe    = st.slider("Max P/E",            5,   100, int(p.get("max_pe",  100)),   5,
-                              help="Filter out expensive stocks. Set to 100 to show all.")
-        max_ter   = st.slider("Max TER (%)",        0.05, 1.5, float(p.get("max_ter", 1.5)), 0.05,
-                              help="Maximum annual fee for ETFs and money market funds")
+        with st.expander("Quality gate"):
+            st.caption("Stocks must pass ALL of these to appear.")
+            qc1, qc2 = st.columns(2)
+            with qc1:
+                min_roe = st.slider("Min ROE (%)", 0, 30, int(p.get("min_roe", 10)), 1,
+                                    help="Return on Equity")
+            with qc2:
+                max_de = st.slider("Max Debt/Equity", 0, 10, int(p.get("max_de", 2)), 1,
+                                   help="Financial leverage")
+            if min_roe != p.get("min_roe") or max_de != p.get("max_de"):
+                p["min_roe"] = min_roe
+                p["max_de"]  = max_de
+                _save_json("prefs.json", p)
 
         changed = (min_score != p.get("min_score") or min_yield != p.get("min_yield")
                    or max_pe != p.get("max_pe") or max_ter != p.get("max_ter"))
@@ -1535,24 +1617,6 @@ with st.sidebar:
             p["max_pe"]    = max_pe
             p["max_ter"]   = max_ter
             _save_json("prefs.json", p)
-
-        with st.expander("Quality gate"):
-            st.caption("Stocks must pass ALL of these to appear.")
-            min_roe = st.slider("Min ROE (%)",    0, 30, int(p.get("min_roe", 10)), 1,
-                                help="Return on Equity — how efficiently the business uses capital")
-            max_de  = st.slider("Max Debt/Equity", 0, 10, int(p.get("max_de",   2)), 1,
-                                help="Financial leverage. 2 = manageable, 5+ = high risk.")
-            if min_roe != p.get("min_roe") or max_de != p.get("max_de"):
-                p["min_roe"] = min_roe
-                p["max_de"]  = max_de
-                _save_json("prefs.json", p)
-
-    st.divider()
-
-    # ── Sign out ─────────────────────────────────────────────────────────────
-    if st.button("Sign out", use_container_width=True, key="signout_btn"):
-        st.session_state.authenticated = False
-        st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1613,17 +1677,16 @@ def _render_score_breakdown(inst: dict):
         label = LABELS.get(key, key.replace("_score", "").replace("_", " ").title())
 
         if score is None:
-            bar_html = '<div class="breakdown-bar-bg"><div class="breakdown-bar-fill" style="width:0%;background:#555"></div></div>'
+            bar_html = '<div class="breakdown-bar-bg"><div class="breakdown-bar-fill" style="width:0%"></div></div>'
             score_str = "no data"
-            label_col = "#555"
+            label_col = "#AAAAAA"
         else:
             pct   = max(min(score, 100), 0)
-            col   = score_colour(score)
             bar_html = (f'<div class="breakdown-bar-bg">'
-                        f'<div class="breakdown-bar-fill" style="width:{pct:.0f}%;background:{col}"></div>'
+                        f'<div class="breakdown-bar-fill" style="width:{pct:.0f}%"></div>'
                         f'</div>')
             score_str = f"{score:.0f}/100"
-            label_col = "var(--vs-ink-soft)"
+            label_col = "#444444"
 
         rows_html += (f'<div class="breakdown-row">'
                       f'<span style="min-width:160px;color:{label_col}">{label}</span>'
@@ -1673,11 +1736,11 @@ def _render_macro_bar():
     boe    = _val(s_uk, "BOE_BASE")
     gilt   = _val(s_uk, "GILT_10Y")
 
-    # Colour logic
-    def rate_col(v):  return "var(--vs-ink)" if v is not None else "var(--vs-ink-faint)"
-    def curve_col(v): return "var(--vs-red)" if (v is not None and v < 0) else "var(--vs-green)" if (v is not None and v > 0.5) else "var(--vs-amber)"
-    def vix_col(v):   return "var(--vs-red)" if (v is not None and v > 30) else "var(--vs-amber)" if (v is not None and v > 20) else "var(--vs-green)"
-    def hy_col(v):    return "var(--vs-red)" if (v is not None and v > 500) else "var(--vs-amber)" if (v is not None and v > 350) else "var(--vs-green)"
+    # Colour logic — monochrome only, no red/green signals
+    def rate_col(v):  return "#1A1A1A" if v is not None else "#AAAAAA"
+    def curve_col(v): return "#777777" if (v is not None and v < 0) else "#1A1A1A" if (v is not None and v > 0.5) else "#444444"
+    def vix_col(v):   return "#777777" if (v is not None and v > 30) else "#444444" if (v is not None and v > 20) else "#1A1A1A"
+    def hy_col(v):    return "#777777" if (v is not None and v > 500) else "#444444" if (v is not None and v > 350) else "#1A1A1A"
 
     if ffr is not None:
         items.append(f'<div class="macro-item"><div class="macro-item-val" style="color:{rate_col(ffr)}">{ffr:.2f}%</div><div class="macro-item-lbl">Fed Funds</div></div>')
@@ -1701,9 +1764,9 @@ def _render_macro_bar():
     # Overall tone dot
     all_signals = macro_us.get("signals", []) + macro_uk.get("signals", [])
     high_count  = sum(1 for s in all_signals if s.get("severity") == "high")
-    tone_col    = "var(--vs-red)" if high_count >= 2 else "var(--vs-amber)" if high_count == 1 else "var(--vs-green)"
+    tone_col    = "#777777" if high_count >= 2 else "#444444" if high_count == 1 else "#1A1A1A"
     tone_lbl    = "Cautious" if high_count >= 2 else "Mixed" if high_count == 1 else "Constructive"
-    tone_item   = (f'<div class="macro-item" style="border-right:1px solid var(--vs-rule);padding-right:20px;margin-right:4px">'
+    tone_item   = (f'<div class="macro-item" style="border-right:1px solid #D4D4D2;padding-right:20px;margin-right:4px">'
                    f'<div class="macro-item-val" style="color:{tone_col}">● {tone_lbl}</div>'
                    f'<div class="macro-item-lbl">Macro Backdrop</div></div>')
 
@@ -1826,7 +1889,7 @@ def render_card(inst: dict, show_add_watchlist=True):
     # ── Quality fail badge ────────────────────────────────────────────────────
     quality_badge = ""
     if not passes and ac == "Stock":
-        quality_badge = '<div><span class="quality-fail">⛔ Does not pass quality filter</span></div>'
+        quality_badge = '<div><span class="quality-fail">Does not pass quality filter</span></div>'
 
     # ── Signal badges ─────────────────────────────────────────────────────────
     badges_html = ""
@@ -1834,11 +1897,9 @@ def render_card(inst: dict, show_add_watchlist=True):
     if badges:
         badge_parts = []
         for b in badges:
-            col = b.get("colour", "#2C4460")
-            bg  = col + "22"   # 13% opacity background
             badge_parts.append(
-                f'<span class="signal-badge" style="background:{bg};color:{col};border:1px solid {col}44" '
-                f'title="{b.get("detail","")}">{b.get("icon","")} {b.get("label","")}</span>'
+                f'<span class="signal-badge" title="{b.get("detail","")}">'
+                f'{b.get("label","")}</span>'
             )
         badges_html = '<div class="signal-badge-row">' + "".join(badge_parts) + "</div>"
 
@@ -1846,40 +1907,110 @@ def render_card(inst: dict, show_add_watchlist=True):
     nudge = inst.get("score_nudge", 0)
     nudge_html = ""
     if nudge and abs(nudge) >= 1 and score is not None:
-        nudge_col = "var(--vs-green)" if nudge > 0 else "var(--vs-amber)"
-        nudge_html = (f'<span style="font-size:0.7rem;color:{nudge_col};margin-left:6px">'
-                      f'({nudge:+.0f} signal adj.)</span>')
+        nudge_html = (f'<span style="font-size:9px;color:#777777;margin-left:4px;'
+                      f'font-family:var(--vs-sans);font-weight:600;text-transform:uppercase;'
+                      f'letter-spacing:0.06em">({nudge:+.0f})</span>')
 
-    # ── Price + YTD inline ────────────────────────────────────────────────────
+    # ── Price + YTD ────────────────────────────────────────────────────────────
     price = _f(inst.get("price"))
     ytd   = _f(inst.get("ytd_pct"))
 
-    ytd_html = ""
+    price_str = f"{cur} {price:,.2f}" if price else "—"
+    ytd_str   = ""
+    ytd_cls   = ""
     if ytd is not None:
-        c = "var(--vs-green)" if ytd > 0 else "var(--vs-red)" if ytd < 0 else "var(--vs-ink-soft)"
-        ytd_html = f'<span style="font-size:0.74rem;color:{c};margin-left:8px;font-weight:500">{_fmt_pct(ytd)} YTD</span>'
+        sign    = "+" if ytd >= 0 else ""
+        ytd_str = f"{sign}{ytd:.1f}%"
 
-    price_html = ""
-    if price:
-        price_html = f'<span style="font-size:0.74rem;color:var(--vs-ink-soft)">{cur}&nbsp;{price:,.2f}</span>'
+    # ── Determine score block class (high vs low) ─────────────────────────────
+    score_block_cls = "card-score-block"
+    if score is None or score < 45:
+        score_block_cls += " low"
+
+    # ── Build verdict bullets ─────────────────────────────────────────────────
+    # verdict may be plain text or already contain bullet structure
+    # We parse for Signal / Risk / Watch prefixes; fall back to plain text
+    def _make_bullets(text):
+        if not text or text == "—":
+            return f'<div class="card-bullet"><span style="color:#444444">{text}</span></div>'
+        import re
+        # Try to split on known markers
+        sig = re.search(r'(?:Signal|Thesis)[:\s]+(.+?)(?=Risk[:\s]|Watch[:\s]|$)', text, re.I | re.S)
+        rsk = re.search(r'Risk[:\s]+(.+?)(?=Watch[:\s]|Signal[:\s]|$)', text, re.I | re.S)
+        wch = re.search(r'Watch[:\s]+(.+?)(?=Risk[:\s]|Signal[:\s]|$)', text, re.I | re.S)
+        if sig or rsk or wch:
+            rows = []
+            if sig:
+                rows.append(('↑', 'Signal', sig.group(1).strip()))
+            if rsk:
+                rows.append(('!', 'Risk', rsk.group(1).strip()))
+            if wch:
+                rows.append(('→', 'Watch', wch.group(1).strip()))
+            html = ""
+            for icon, lbl, body in rows:
+                html += (
+                    f'<div class="card-bullet">'
+                    f'<span class="card-bullet-icon">{icon}</span>'
+                    f'<span><strong>{lbl}:</strong> {body}</span>'
+                    f'</div>'
+                )
+            return html
+        # Plain text fallback — split on ". " for rough bullets
+        sentences = [s.strip() for s in text.replace("•", ". ").split(". ") if s.strip()]
+        icons = ['↑', '!', '→']
+        lbls  = ['Signal', 'Risk', 'Watch']
+        html = ""
+        for i, sent in enumerate(sentences[:3]):
+            icon = icons[i] if i < len(icons) else '→'
+            lbl  = lbls[i]  if i < len(lbls)  else 'Note'
+            html += (
+                f'<div class="card-bullet">'
+                f'<span class="card-bullet-icon">{icon}</span>'
+                f'<span><strong>{lbl}:</strong> {sent}</span>'
+                f'</div>'
+            )
+        return html
+
+    bullets_html = _make_bullets(verdict)
+
+    # ── YTD footer ────────────────────────────────────────────────────────────
+    ytd_footer = ""
+    if ytd_str:
+        ytd_footer = (
+            f'<span class="card-ytd">YTD '
+            f'<span class="card-ytd-val">{ytd_str}</span></span>'
+        )
+
+    # ── Strong Value tag ──────────────────────────────────────────────────────
+    tag_html = ""
+    if score is not None and score >= 75:
+        tag_html = '<span class="card-tag">Strong Value</span>'
 
     # NOTE: no leading spaces — Streamlit/CommonMark treats 4-space-indented lines as code blocks
     card_html = (
         f'<div class="card">'
         f'<div class="card-header">'
-        f'<div>'
-        f'<div class="card-title">{name}{ytd_html}</div>'
-        f'<div class="card-sub">{ticker}  ·  {subtitle}&nbsp;&nbsp;{price_html}</div>'
+        f'<div style="flex:1;min-width:0">'
+        f'<div class="card-name">{name}</div>'
+        f'<div class="card-ticker-line">'
+        f'<span class="ticker">{ticker}</span>'
+        f'&nbsp;&nbsp;<span class="price">{price_str}</span>'
         f'</div>'
-        f'<div class="card-score-box" style="background:{bg}">'
-        f'<div class="card-score-num" style="color:{colour}">{score_display}</div>'
-        f'<div class="card-score-lbl" style="color:{colour}">{rating_label}{nudge_html}</div>'
+        f'<div class="card-market-line">{subtitle}</div>'
+        f'</div>'
+        f'<div class="{score_block_cls}">'
+        f'<div class="card-score-num">{score_display}{nudge_html}</div>'
+        f'<div class="card-score-lbl">{rating_label}</div>'
         f'</div>'
         f'</div>'
         f'{quality_badge}'
         f'{badges_html}'
-        f'<div class="card-verdict">{verdict}</div>'
+        f'<div class="card-bullets">{bullets_html}</div>'
         f'<div class="card-metrics">{pills_html}</div>'
+        f'<div class="card-footer">'
+        f'{ytd_footer}'
+        f'{tag_html}'
+        f'</div>'
         f'</div>'
     )
     st.markdown(card_html, unsafe_allow_html=True)
@@ -1927,7 +2058,7 @@ def render_card(inst: dict, show_add_watchlist=True):
 # PAGE: HOME
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _home_summary_tile(col, num, label, colour="var(--vs-navy)"):
+def _home_summary_tile(col, num, label, colour="#1A1A1A"):
     with col:
         st.markdown(
             f'<div class="summary-tile">'
@@ -1938,49 +2069,47 @@ def _home_summary_tile(col, num, label, colour="var(--vs-navy)"):
         )
 
 
-def _nav_heading(label, page_key, subtitle=None):
-    """Render a clickable section heading that navigates to page_key on click."""
-    sub_html = (
-        f'<div style="font-size:0.78rem;color:var(--vs-ink-soft);'
-        f'font-family:\'Inter\',-apple-system,sans-serif;font-weight:400;'
-        f'letter-spacing:0.03em;margin-top:2px">{subtitle}</div>'
-        if subtitle else ""
+def _section_header(label, page_key=None):
+    """Render the BBC-style section header with optional 'View all →' link."""
+    link_html = ""
+    if page_key:
+        link_html = f'<span class="vs-section-link" id="sec_link_{page_key}">View all →</span>'
+
+    st.markdown(
+        f'<div class="vs-section-header">'
+        f'<div class="vs-section-header-row">'
+        f'<span class="vs-section-title">{label}</span>'
+        f'{link_html}'
+        f'</div>'
+        f'<div class="vs-section-rule"></div>'
+        f'</div>',
+        unsafe_allow_html=True,
     )
-    col_h, col_btn = st.columns([5, 1])
-    with col_h:
-        st.markdown(
-            f'<div style="margin-bottom:0.1rem">'
-            f'<div class="section-header" style="margin-bottom:0">{label}</div>'
-            f'{sub_html}'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-    with col_btn:
-        if st.button("View all →", key=f"nav_{page_key}_{label[:6]}", use_container_width=True):
+    if page_key:
+        # Hidden button wired via JS
+        if st.button(f"→ {label}", key=f"sec_nav_{page_key}_{label[:8]}", help=f"Go to {page_key}"):
             st.session_state.page = page_key
             st.rerun()
+        st.markdown(
+            f'<script>'
+            f'(function(){{var lnk=document.getElementById("sec_link_{page_key}");'
+            f'if(lnk&&!lnk._wired){{lnk._wired=true;lnk.style.cursor="pointer";'
+            f'lnk.addEventListener("click",function(){{'
+            f'var btns=document.querySelectorAll("button");'
+            f'for(var i=0;i<btns.length;i++){{'
+            f'if(btns[i].innerText.trim().startsWith("→ {label[:8]}")){{btns[i].click();break;}}'
+            f'}}}});}}}})();</script>',
+            unsafe_allow_html=True,
+        )
+
+
+# Keep old _nav_heading as thin wrapper for any legacy callers
+def _nav_heading(label, page_key, subtitle=None):
+    _section_header(label, page_key)
 
 
 def page_home():
     _render_counter.clear()
-
-    # ── Welcome heading ───────────────────────────────────────────────────────
-    user = st.session_state.get("user_name", "")
-    greeting = f"Good morning, {user}" if user else "Good morning"
-    now_h = datetime.now().hour
-    if now_h >= 12 and now_h < 17:
-        greeting = f"Good afternoon, {user}" if user else "Good afternoon"
-    elif now_h >= 17:
-        greeting = f"Good evening, {user}" if user else "Good evening"
-
-    st.markdown(
-        f'<div style="margin-bottom:0.1rem">'
-        f'<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:2rem;'
-        f'font-weight:700;color:var(--vs-navy);letter-spacing:-0.02em;line-height:1.15">'
-        f'{greeting}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
 
     instruments = st.session_state.instruments
     ok          = [x for x in instruments if x.get("ok")] if instruments else []
@@ -1989,11 +2118,11 @@ def page_home():
     watchlist   = st.session_state.watchlist
     age         = cache_age_hours()
 
-    # ── Status caption ────────────────────────────────────────────────────────
+    # ── Build status strings for hero timestamp ───────────────────────────────
     if age is not None:
-        age_str = ("Live" if age < 1 else f"{age:.0f}h old" if age < 8 else f"Stale — {age:.0f}h")
+        age_str = ("Live" if age < 1 else f"{int(age)}h old" if age < 8 else f"Stale — {int(age)}h")
     else:
-        age_str = "No data"
+        age_str = "No data loaded"
     last_surv = get_last_run_time()
     surv_str  = ""
     if last_surv:
@@ -2004,18 +2133,72 @@ def page_home():
             pass
     next_ev  = _next_market_event()
     next_str = f"  ·  {next_ev}" if next_ev else ""
-    st.caption(f"{age_str}{surv_str}{next_str}  ·  {datetime.now().strftime('%A %d %B %Y')}")
+    ts_line  = f"{datetime.now().strftime('%A %d %B %Y').upper()}  ·  {age_str}{surv_str}{next_str}"
+
+    # ── Welcome heading ───────────────────────────────────────────────────────
+    user = st.session_state.get("user_name", "")
+    now_h = datetime.now().hour
+    if now_h < 12:
+        period = "morning"
+    elif now_h < 17:
+        period = "afternoon"
+    else:
+        period = "evening"
+    greeting = f"Good {period}, {user}." if user else f"Good {period}."
+
+    # ── Hero summary stats ────────────────────────────────────────────────────
+    scored_all = [x for x in ok if _f(x.get("score")) is not None]
+    strong_val = sum(1 for x in scored_all if (_f(x.get("score")) or 0) >= 75)
+    h_scored   = [live[h["ticker"]] for h in holdings if h["ticker"] in live and _f(live[h["ticker"]].get("score")) is not None]
+    avg_h_score = (sum(_f(x["score"]) for x in h_scored) / len(h_scored)) if h_scored else None
+
+    # Avg portfolio return
+    gains = []
+    h_map = {h["ticker"]: h for h in holdings}
+    for inst in h_scored:
+        added = _f(h_map.get(inst["ticker"], {}).get("price_when_added"))
+        price = _f(inst.get("price"))
+        if added and price and added > 0:
+            gains.append((price / added - 1) * 100)
+    avg_gain = (sum(gains) / len(gains)) if gains else None
+
+    stat1_val = str(len(ok)) if ok else "—"
+    stat2_val = f"{avg_h_score:.0f}" if avg_h_score is not None else "—"
+    stat3_val = str(strong_val) if ok else "—"
+    stat4_raw = f"{'+' if avg_gain and avg_gain >= 0 else ''}{avg_gain:.1f}%" if avg_gain is not None else "—"
+    stat4_cls = " positive" if avg_gain and avg_gain > 0 else ""
+
+    hero_html = (
+        f'<div class="vs-hero">'
+        f'<div class="vs-hero-greeting">{greeting}</div>'
+        f'<div class="vs-hero-timestamp">{ts_line}</div>'
+        f'<div class="vs-hero-stats">'
+        f'<div class="vs-hero-stat"><div class="vs-hero-stat-val">{stat1_val}</div>'
+        f'<div class="vs-hero-stat-lbl">Instruments loaded</div></div>'
+        f'<div class="vs-hero-stat"><div class="vs-hero-stat-val">{stat2_val}</div>'
+        f'<div class="vs-hero-stat-lbl">Avg holdings score</div></div>'
+        f'<div class="vs-hero-stat"><div class="vs-hero-stat-val">{stat3_val}</div>'
+        f'<div class="vs-hero-stat-lbl">Strong value picks</div></div>'
+        f'<div class="vs-hero-stat"><div class="vs-hero-stat-val{stat4_cls}">{stat4_raw}</div>'
+        f'<div class="vs-hero-stat-lbl">Avg portfolio return</div></div>'
+        f'</div>'
+        f'</div>'
+    )
+    st.markdown(hero_html, unsafe_allow_html=True)
+
+    # ── Data controls ─────────────────────────────────────────────────────────
+    _render_data_controls()
 
     # ── Welcome / no-data state ───────────────────────────────────────────────
     if not instruments:
         st.markdown(
-            '<div style="text-align:center;padding:80px 20px">'
-            '<div style="width:40px;height:2px;background:var(--vs-gold);margin:0 auto 28px auto;border-radius:2px"></div>'
-            '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:1.5rem;font-weight:700;'
-            'color:var(--vs-navy);margin-bottom:10px;letter-spacing:-0.01em">Welcome to Value Screener</div>'
-            '<div style="font-size:0.9rem;line-height:1.7;max-width:420px;margin:0 auto;color:var(--vs-ink-mid)">'
-            'Choose your markets in the sidebar, then click '
-            '<b style="color:var(--vs-ink)">Load Data</b> to begin.'
+            '<div class="changed-banner" style="margin-top:32px;text-align:center;'
+            'padding:40px 24px;border-left:none;border:1px solid #D4D4D2">'
+            '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:26px;'
+            'font-weight:700;color:#1A1A1A;margin-bottom:10px;letter-spacing:-0.3px">'
+            'Welcome to Value Screener</div>'
+            '<div style="font-size:13px;line-height:1.6;max-width:420px;margin:0 auto;color:#444444">'
+            'Choose your markets above, then click <b style="color:#1A1A1A">Load Data</b> to begin.'
             '</div>'
             '</div>',
             unsafe_allow_html=True,
@@ -2024,17 +2207,16 @@ def page_home():
 
     # ── Macro bar ─────────────────────────────────────────────────────────────
     _render_macro_bar()
-    st.markdown('<div style="height:0.75rem"></div>', unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
     # SECTION 1 — YOUR HOLDINGS
     # ══════════════════════════════════════════════════════════════════════════
-    _nav_heading("Your Holdings", "deepdive", "Positions you currently hold")
+    _section_header("Your Holdings", "deepdive")
 
     if not holdings:
         st.markdown(
-            '<div class="changed-banner" style="text-align:center;color:var(--vs-ink-soft)">'
-            'No holdings yet — go to <b style="color:var(--vs-ink)">Deepdive</b> to add your positions.'
+            '<div class="changed-banner">'
+            'No holdings yet — go to <b>Deepdive</b> to add your positions.'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -2044,61 +2226,48 @@ def page_home():
         h_missing = [t for t in h_tickers if t not in live]
 
         if h_missing:
-            st.caption(f"{len(h_missing)} holding(s) have no live data — load their markets in the sidebar.")
+            st.caption(f"{len(h_missing)} holding(s) have no live data — load their markets above.")
 
         if h_live:
-            # Summary tiles: total holdings, total with live scores, avg score
-            scored = [x for x in h_live if _f(x.get("score")) is not None]
-            avg_score = (sum(_f(x["score"]) for x in scored) / len(scored)) if scored else None
+            scored_h  = [x for x in h_live if _f(x.get("score")) is not None]
+            avg_score = (sum(_f(x["score"]) for x in scored_h) / len(scored_h)) if scored_h else None
             avg_str   = f"{avg_score:.0f}" if avg_score is not None else "—"
 
-            tc1, tc2, tc3, tc4 = st.columns(4)
-            _home_summary_tile(tc1, str(len(holdings)),  "Holdings")
-            _home_summary_tile(tc2, str(len(h_live)),    "With live data")
-            _home_summary_tile(tc3, avg_str,             "Avg value score",
-                               "var(--vs-green)" if avg_score and avg_score >= 65 else
-                               "var(--vs-amber)" if avg_score and avg_score >= 45 else "var(--vs-navy)")
-            # Total gain/loss across holdings with price data
-            gains = []
+            gains2 = []
             for inst in h_live:
                 t     = inst["ticker"]
                 added = _f(h_tickers[t].get("price_when_added"))
-                price = _f(inst.get("price"))
-                if added and price and added > 0:
-                    gains.append((price / added - 1) * 100)
-            if gains:
-                avg_gain = sum(gains) / len(gains)
-                gain_str = f"{'+' if avg_gain >= 0 else ''}{avg_gain:.1f}%"
-                gain_col = "var(--vs-green)" if avg_gain >= 0 else "var(--vs-red)"
-                _home_summary_tile(tc4, gain_str, "Avg return since added", gain_col)
-            else:
-                _home_summary_tile(tc4, "—", "Avg return since added")
+                price_v = _f(inst.get("price"))
+                if added and price_v and added > 0:
+                    gains2.append((price_v / added - 1) * 100)
+            avg_gain2 = (sum(gains2) / len(gains2)) if gains2 else None
+            gain_str  = f"{'+' if avg_gain2 and avg_gain2 >= 0 else ''}{avg_gain2:.1f}%" if avg_gain2 is not None else "—"
 
-            st.markdown('<div style="height:0.75rem"></div>', unsafe_allow_html=True)
+            tc1, tc2, tc3, tc4 = st.columns(4)
+            _home_summary_tile(tc1, str(len(holdings)), "Holdings")
+            _home_summary_tile(tc2, str(len(h_live)),   "With live data")
+            _home_summary_tile(tc3, avg_str,            "Avg value score")
+            _home_summary_tile(tc4, gain_str,           "Avg return since added")
 
-            # Top 2 cards only (highest scored); "View all" in heading navigates to Deepdive
-            h_sorted  = sorted(h_live, key=lambda x: _f(x.get("score")) or 0, reverse=True)
-            top2      = h_sorted[:2]
+            st.markdown('<div style="height:16px"></div>', unsafe_allow_html=True)
+
+            h_sorted = sorted(h_live, key=lambda x: _f(x.get("score")) or 0, reverse=True)
             cols = st.columns(2)
-            for j, inst in enumerate(top2):
+            for j, inst in enumerate(h_sorted[:2]):
                 with cols[j]:
                     render_card(inst, show_add_watchlist=False)
             if len(h_live) > 2:
-                st.caption(f"+{len(h_live) - 2} more — use View all → to see your full portfolio.")
-
-        pass  # navigation handled by _nav_heading
-
-    st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
+                st.caption(f"+{len(h_live) - 2} more — click View all → above.")
 
     # ══════════════════════════════════════════════════════════════════════════
     # SECTION 2 — WATCHLIST
     # ══════════════════════════════════════════════════════════════════════════
-    _nav_heading("Watchlist", "deepdive", "Instruments you are monitoring")
+    _section_header("Watchlist", "deepdive")
 
     if not watchlist:
         st.markdown(
-            '<div class="changed-banner" style="text-align:center;color:var(--vs-ink-soft)">'
-            'Nothing on your watchlist yet — go to <b style="color:var(--vs-ink)">Deepdive</b> to add instruments.'
+            '<div class="changed-banner">'
+            'Nothing on your watchlist yet — go to <b>Deepdive</b> to add instruments.'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -2108,36 +2277,29 @@ def page_home():
         wl_missing = [t for t in wl_tickers if t not in live]
 
         if wl_missing:
-            st.caption(f"{len(wl_missing)} watchlist item(s) have no live data — load their markets in the sidebar.")
+            st.caption(f"{len(wl_missing)} watchlist item(s) have no live data — load their markets above.")
 
         if wl_live:
-            scored_wl   = [x for x in wl_live if _f(x.get("score")) is not None]
-            best_wl     = sorted(scored_wl, key=lambda x: _f(x.get("score")) or 0, reverse=True)
-            flagged_wl  = [x for x in wl_live if x.get("has_signals")]
-            avg_wl      = (sum(_f(x["score"]) for x in scored_wl) / len(scored_wl)) if scored_wl else None
-            avg_wl_str  = f"{avg_wl:.0f}" if avg_wl is not None else "—"
+            scored_wl  = [x for x in wl_live if _f(x.get("score")) is not None]
+            best_wl    = sorted(scored_wl, key=lambda x: _f(x.get("score")) or 0, reverse=True)
+            flagged_wl = [x for x in wl_live if x.get("has_signals")]
+            avg_wl     = (sum(_f(x["score"]) for x in scored_wl) / len(scored_wl)) if scored_wl else None
+            avg_wl_str = f"{avg_wl:.0f}" if avg_wl is not None else "—"
 
             wc1, wc2, wc3, wc4 = st.columns(4)
-            _home_summary_tile(wc1, str(len(watchlist)),    "Watching")
-            _home_summary_tile(wc2, str(len(wl_live)),      "With live data")
-            _home_summary_tile(wc3, avg_wl_str,             "Avg value score",
-                               "var(--vs-green)" if avg_wl and avg_wl >= 65 else
-                               "var(--vs-amber)" if avg_wl and avg_wl >= 45 else "var(--vs-navy)")
-            _home_summary_tile(wc4, str(len(flagged_wl)),   "Flagged",
-                               "var(--vs-amber)" if flagged_wl else "var(--vs-navy)")
+            _home_summary_tile(wc1, str(len(watchlist)),  "Watching")
+            _home_summary_tile(wc2, str(len(wl_live)),    "With live data")
+            _home_summary_tile(wc3, avg_wl_str,           "Avg value score")
+            _home_summary_tile(wc4, str(len(flagged_wl)), "Flagged")
 
-            st.markdown('<div style="height:0.75rem"></div>', unsafe_allow_html=True)
+            st.markdown('<div style="height:16px"></div>', unsafe_allow_html=True)
 
-            # Top 2 cards only; "View all" in heading navigates to Deepdive
-            top2_wl = best_wl[:2]
             cols = st.columns(2)
-            for j, inst in enumerate(top2_wl):
+            for j, inst in enumerate(best_wl[:2]):
                 with cols[j]:
                     render_card(inst, show_add_watchlist=False)
             if len(wl_live) > 2:
-                st.caption(f"+{len(wl_live) - 2} more — use View all → to see your full watchlist.")
-
-    st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
+                st.caption(f"+{len(wl_live) - 2} more — click View all → above.")
 
     # ══════════════════════════════════════════════════════════════════════════
     # SECTION 3 — RADAR (top picks not already held or watched)
@@ -2153,31 +2315,29 @@ def page_home():
     )[:4]
 
     if radar:
-        _nav_heading("Radar", "screener", "Top-scored ideas not yet held or watched")
-        # Compact chip row — one chip per ticker
-        chips_html = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;margin-bottom:0.5rem">'
+        _section_header("Radar", "screener")
+        chips_html = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
         for inst in radar:
-            tkr   = inst.get("ticker", "")
-            name  = inst.get("name", tkr)
-            score = _f(inst.get("score"))
-            sc    = score_colour(score) if score is not None else "#6B7D92"
-            sb    = score_bg(score)     if score is not None else "#F4F1EC"
+            tkr       = inst.get("ticker", "")
+            iname     = inst.get("name", tkr)
+            score     = _f(inst.get("score"))
             score_txt = f"{score:.0f}" if score is not None else "—"
             chips_html += (
-                f'<div style="display:flex;align-items:center;gap:6px;'
-                f'background:var(--vs-bg-card);border:1px solid var(--vs-rule);'
-                f'border-radius:20px;padding:6px 14px 6px 8px;'
-                f'box-shadow:var(--vs-shadow);white-space:nowrap">'
-                f'<span style="background:{sb};color:{sc};font-size:0.72rem;font-weight:700;'
-                f'border-radius:12px;padding:2px 7px;letter-spacing:0.02em">{score_txt}</span>'
-                f'<span style="font-size:0.85rem;font-weight:600;color:var(--vs-navy)">{tkr}</span>'
-                f'<span style="font-size:0.78rem;color:var(--vs-ink-soft)">{name[:28]}</span>'
+                f'<div style="display:flex;align-items:center;gap:8px;'
+                f'background:#FFFFFF;border:1px solid #D4D4D2;'
+                f'padding:8px 16px 8px 10px;white-space:nowrap">'
+                f'<span style="font-family:\'Playfair Display\',serif;font-size:20px;'
+                f'font-weight:700;color:#1A1A1A;line-height:1">{score_txt}</span>'
+                f'<span style="border-left:1px solid #D4D4D2;margin:0 4px;height:18px;'
+                f'display:inline-block;vertical-align:middle"></span>'
+                f'<span style="font-family:\'Inter\',sans-serif;font-size:12px;font-weight:700;'
+                f'color:#1A1A1A">{tkr}</span>'
+                f'<span style="font-family:\'Inter\',sans-serif;font-size:11px;color:#777777">'
+                f'{iname[:28]}</span>'
                 f'</div>'
             )
         chips_html += '</div>'
         st.markdown(chips_html, unsafe_allow_html=True)
-
-    st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
     # SECTION 4 — BRIEFING SNAPSHOT
@@ -2186,37 +2346,27 @@ def page_home():
     briefing = load_briefing()
 
     if signals or briefing:
-        _nav_heading("Briefing", "briefing", "Alerts, signals and market summary")
+        _section_header("Briefing", "briefing")
 
-        # Compact headline callout
         if briefing and briefing.get("headline"):
             st.markdown(
-                f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);'
-                f'border-left:3px solid var(--vs-gold);border-radius:10px;'
-                f'padding:12px 18px;margin-top:10px;margin-bottom:10px;font-size:0.88rem;'
-                f'color:var(--vs-ink-mid);line-height:1.6;box-shadow:var(--vs-shadow)">'
-                f'{briefing["headline"]}</div>',
+                f'<div class="changed-banner">{briefing["headline"]}</div>',
                 unsafe_allow_html=True,
             )
 
-        # Compact alert-count badge row
         if signals:
-            high_count  = sum(1 for s in signals if s.get("severity") == "high")
-            med_count   = sum(1 for s in signals if s.get("severity") == "medium")
-            low_count   = sum(1 for s in signals if s.get("severity") in ("low", "info"))
-            badge_items = [
-                (high_count, "#8B2635", "#FAECEE", "High"),
-                (med_count,  "#9B6B1A", "#FBF3E4", "Medium"),
-                (low_count,  "#2A6B44", "#D6EDDF", "Low / Info"),
-            ]
-            badges_html = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">'
-            for count, colour, bg, label in badge_items:
+            high_count = sum(1 for s in signals if s.get("severity") == "high")
+            med_count  = sum(1 for s in signals if s.get("severity") == "medium")
+            low_count  = sum(1 for s in signals if s.get("severity") in ("low", "info"))
+            badges_html = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+            for count, lbl in [(high_count, "High"), (med_count, "Medium"), (low_count, "Low / Info")]:
                 if count:
                     badges_html += (
-                        f'<span style="background:{bg};color:{colour};font-size:0.78rem;'
-                        f'font-weight:600;border-radius:12px;padding:3px 11px;'
-                        f'border:1px solid {colour}22">'
-                        f'{count} {label}</span>'
+                        f'<span style="background:transparent;color:#1A3A5C;'
+                        f'font-family:\'Inter\',sans-serif;font-size:10px;font-weight:700;'
+                        f'text-transform:uppercase;letter-spacing:0.08em;'
+                        f'border:1px solid #1A3A5C;padding:3px 10px">'
+                        f'{count} {lbl}</span>'
                     )
             badges_html += '</div>'
             st.markdown(badges_html, unsafe_allow_html=True)
@@ -2228,11 +2378,25 @@ def page_home():
 
 def page_screener():
     _render_counter.clear()
-    st.markdown("# Screen")
+
+    # ── Page title ────────────────────────────────────────────────────────────
+    st.markdown(
+        '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:38px;'
+        'font-weight:700;color:#1A1A1A;letter-spacing:-0.5px;line-height:1.1;'
+        'padding-top:32px;padding-bottom:8px">Screen</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Data controls ─────────────────────────────────────────────────────────
+    _render_data_controls()
+    _render_screen_filters()
 
     instruments = st.session_state.instruments
     if not instruments:
-        st.info("👈  Select markets in the sidebar and click **Load Data** to screen them.")
+        st.markdown(
+            '<div class="changed-banner" style="margin-top:16px">Select markets above and click <b>Load Data</b> to screen them.</div>',
+            unsafe_allow_html=True,
+        )
         return
 
     filtered = apply_filters(instruments, include_excluded=False)
@@ -2243,17 +2407,30 @@ def page_screener():
     stocks_passing = [x for x in filtered if x.get("asset_class") == "Stock"]
     funds_passing  = [x for x in filtered if x.get("asset_class") != "Stock"]
     flagged_count  = sum(1 for x in filtered if x.get("has_signals"))
-    sc1, sc2, sc3, sc4, sc5 = st.columns(5)
-    sc1.metric("Showing",               len(filtered),       f"of {len(ok_all)} loaded")
-    sc2.metric("Stocks (quality pass)", len(stocks_passing))
-    sc3.metric("Funds / ETFs",          len(funds_passing))
-    sc4.metric("Excluded (quality fail)", len(excluded),
-               help="Stocks filtered out by the quality gate. Toggle below to view them.")
-    sc5.metric("Flagged by surveillance", flagged_count,
-               help="Instruments with active signals — news, score drift, insider buying, filings.")
+
+    statbar_html = (
+        f'<div class="vs-statbar">'
+        f'<div class="vs-statbar-cell">'
+        f'<div class="vs-statbar-val">{len(filtered)}</div>'
+        f'<div class="vs-statbar-lbl">Showing of {len(ok_all)}</div></div>'
+        f'<div class="vs-statbar-cell">'
+        f'<div class="vs-statbar-val">{len(stocks_passing)}</div>'
+        f'<div class="vs-statbar-lbl">Stocks</div></div>'
+        f'<div class="vs-statbar-cell">'
+        f'<div class="vs-statbar-val">{len(funds_passing)}</div>'
+        f'<div class="vs-statbar-lbl">Funds / ETFs</div></div>'
+        f'<div class="vs-statbar-cell">'
+        f'<div class="vs-statbar-val">{len(excluded)}</div>'
+        f'<div class="vs-statbar-lbl">Excluded</div></div>'
+        f'<div class="vs-statbar-cell">'
+        f'<div class="vs-statbar-val">{flagged_count}</div>'
+        f'<div class="vs-statbar-lbl">Flagged</div></div>'
+        f'</div>'
+    )
+    st.markdown(statbar_html, unsafe_allow_html=True)
 
     if not filtered and not excluded:
-        st.warning("Nothing matches your current filters — try loosening them in the sidebar.")
+        st.warning("Nothing matches your current filters — try loosening them above.")
         return
 
     # ── Flagged-only toggle ────────────────────────────────────────────────────
@@ -2261,9 +2438,9 @@ def page_screener():
         flag_col, _ = st.columns([2, 3])
         with flag_col:
             flag_label = (
-                f"🚨  Showing flagged only ({flagged_count})"
+                f"Showing flagged only ({flagged_count})"
                 if st.session_state.show_flagged_only
-                else f"🚨  Show flagged only ({flagged_count})"
+                else f"Show flagged only ({flagged_count})"
             )
             if st.button(flag_label, key="toggle_flagged",
                          type="primary" if st.session_state.show_flagged_only else "secondary"):
@@ -2277,9 +2454,9 @@ def page_screener():
         else filtered
     )
 
-    st.markdown('<div style="height:0.5rem"></div>', unsafe_allow_html=True)
+    # ── Section header + Group tabs ────────────────────────────────────────────
+    _section_header("Top Picks by Score")
 
-    # ── Group tabs ─────────────────────────────────────────────────────────────
     groups_present = sorted({x.get("group", "") for x in display_list if x.get("group")})
     tab_labels     = ["All"] + groups_present
     tabs           = st.tabs(tab_labels)
@@ -2301,10 +2478,9 @@ def page_screener():
         with tabs[i + 1]:
             render_group([x for x in display_list if x.get("group") == grp])
 
-    # ── FIX UX: quality-failed stocks hidden by default with toggle ────────────
+    # ── Quality-failed stocks (hidden by default) ──────────────────────────────
     if excluded:
-        st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
-        st.divider()
+        st.markdown('<div style="height:16px"></div>', unsafe_allow_html=True)
         toggle_label = (
             f"Hide {len(excluded)} stocks that failed quality filter"
             if st.session_state.show_excluded
@@ -2466,26 +2642,26 @@ def _render_search_result():
 
     already_in_wl = ticker in {w["ticker"] for w in st.session_state.watchlist}
 
-    pe_span    = (f'<span><b style="color:var(--vs-ink)">P/E</b> {pe:.1f}x</span>' if pe else '')
-    pb_span    = (f'<span><b style="color:var(--vs-ink)">P/B</b> {pb:.1f}x</span>' if pb else '')
-    yield_span = (f'<span><b style="color:var(--vs-ink)">Yield</b> {div_yield:.2f}%</span>' if div_yield else '')
-    ret_span   = (f'<span><b style="color:var(--vs-ink)">1yr</b> {_fmt_pct(yr1_ret)}</span>' if yr1_ret is not None else '')
-    cap_span   = (f'<span><b style="color:var(--vs-ink)">Mkt cap</b> {_fmt_aum(mktcap)}</span>' if mktcap else '')
+    pe_span    = (f'<span><b style="color:#1A1A1A">P/E</b> {pe:.1f}x</span>' if pe else '')
+    pb_span    = (f'<span><b style="color:#1A1A1A">P/B</b> {pb:.1f}x</span>' if pb else '')
+    yield_span = (f'<span><b style="color:#1A1A1A">Yield</b> {div_yield:.2f}%</span>' if div_yield else '')
+    ret_span   = (f'<span><b style="color:#1A1A1A">1yr</b> {_fmt_pct(yr1_ret)}</span>' if yr1_ret is not None else '')
+    cap_span   = (f'<span><b style="color:#1A1A1A">Mkt cap</b> {_fmt_aum(mktcap)}</span>' if mktcap else '')
     price_disp = _fmt_price(price, currency + ' ') if price else '—'
     st.markdown(
-        f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);border-radius:12px;'
+        f'<div style="background:#FFFFFF;border:1px solid #D4D4D2;border-radius:0;'
         f'padding:18px 22px;margin-bottom:14px;box-shadow:var(--vs-shadow)">'
         f'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
         f'<div>'
-        f'<span style="font-size:1.05rem;font-weight:600;color:var(--vs-navy)">{name}</span>'
-        f'<span style="font-size:0.82rem;color:var(--vs-ink-soft);margin-left:10px">{ticker}</span>'
-        f'<span style="font-size:0.72rem;background:var(--vs-bg-subtle);color:var(--vs-ink-mid);'
-        f'border:1px solid var(--vs-rule);border-radius:4px;padding:2px 8px;margin-left:8px">{group}</span>'
+        f'<span style="font-size:1.05rem;font-weight:600;color:#1A1A1A">{name}</span>'
+        f'<span style="font-size:0.82rem;color:#777777;margin-left:10px">{ticker}</span>'
+        f'<span style="font-size:0.72rem;background:#F0F0EE;color:#444444;'
+        f'border:1px solid #D4D4D2;border-radius:0;padding:2px 8px;margin-left:8px">{group}</span>'
         f'</div>'
-        f'<div style="font-size:1rem;font-weight:600;color:var(--vs-navy)">{price_disp}</div>'
+        f'<div style="font-size:1rem;font-weight:600;color:#1A1A1A">{price_disp}</div>'
         f'</div>'
-        f'<div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:0.82rem;color:var(--vs-ink-mid)">'
-        f'<span><b style="color:var(--vs-ink)">Sector</b> {sector}</span>'
+        f'<div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:0.82rem;color:#444444">'
+        f'<span><b style="color:#1A1A1A">Sector</b> {sector}</span>'
         f'{pe_span}{pb_span}{yield_span}{ret_span}{cap_span}'
         f'</div>'
         f'</div>',
@@ -2534,20 +2710,20 @@ def _render_deep_analysis(inst: dict):
     ticker = inst["ticker"]
     name   = inst.get("name", ticker)
 
-    # ── Colour helpers ────────────────────────────────────────────────────────
+    # ── Colour helpers (monochrome — no colour signals) ───────────────────────
     def _score_col(s, mx):
         pct = s / mx if mx else 0
-        if pct >= 0.8: return "var(--vs-green)"
-        if pct >= 0.6: return "var(--vs-amber)"
-        if pct >= 0.4: return "#B85C20"
-        return "var(--vs-red)"
+        if pct >= 0.8: return "#1A1A1A"
+        if pct >= 0.6: return "#444444"
+        if pct >= 0.4: return "#777777"
+        return "#AAAAAA"
 
     def _rating_col(r):
         r = (r or "").lower()
-        if "exceptional" in r: return "var(--vs-green)"
-        if "strong"      in r: return "var(--vs-amber)"
-        if "moderate"    in r: return "#B85C20"
-        return "var(--vs-red)"
+        if "exceptional" in r: return "#1A1A1A"
+        if "strong"      in r: return "#444444"
+        if "moderate"    in r: return "#777777"
+        return "#AAAAAA"
 
     def _conf_icon(c):
         c = (c or "").lower()
@@ -2600,7 +2776,7 @@ def _render_deep_analysis(inst: dict):
     age    = cache_age_days(ticker)
 
     st.markdown("---")
-    st.markdown('<div class="section-header">Deep analysis</div>', unsafe_allow_html=True)
+    _section_header("Deep Analysis")
 
     # Status line
     if cached:
@@ -2672,10 +2848,9 @@ def _render_deep_analysis(inst: dict):
     # Header: big score + rating badge
     st.markdown(
         f'<div style="display:flex;align-items:center;gap:16px;margin:12px 0 8px 0">'
-        f'<div class="da-score-big" style="color:{ov_col}">{overall}</div>'
+        f'<div class="da-score-big">{overall}</div>'
         f'<div>'
-        f'<span class="da-rating" style="background:{rat_col}22;color:{rat_col};border:1px solid {rat_col}44">'
-        f'{rating}</span>'
+        f'<span class="da-rating">{rating}</span>'
         f'<span class="da-confidence"> {_conf_icon(conf)} {conf} confidence</span>'
         f'</div>'
         f'</div>',
@@ -2686,9 +2861,10 @@ def _render_deep_analysis(inst: dict):
     summary = cached.get("final_assessment", {}).get("summary", "")
     if summary:
         st.markdown(
-            f'<div style="font-size:0.85rem;color:var(--vs-ink-mid);line-height:1.6;'
-            f'margin-bottom:12px;padding:14px 16px;background:var(--vs-bg-raised);'
-            f'border-radius:8px;border-left:3px solid {rat_col}">{summary}</div>',
+            f'<div style="font-family:\'Inter\',sans-serif;font-size:13px;color:#444444;line-height:1.6;'
+            f'margin-bottom:12px;padding:14px 16px;background:#F8F8F6;'
+            f'border-left:3px solid #1A3A5C;border:1px solid #D4D4D2;'
+            f'border-left-width:3px">{summary}</div>',
             unsafe_allow_html=True,
         )
 
@@ -2878,7 +3054,7 @@ def _render_instrument_expander(entry: dict, list_key: str, live_data: dict,
     if price and added_price and added_price > 0:
         chg    = (price / added_price - 1) * 100
         sign   = "+" if chg >= 0 else ""
-        colour = "var(--vs-green)" if chg >= 0 else "var(--vs-red)"
+        colour = "#1A1A1A" if chg >= 0 else "#777777"
         change_str = (
             f'<span style="color:{colour};font-weight:600">{sign}{chg:.1f}% since added</span>'
         )
@@ -2974,27 +3150,27 @@ def _render_dd_search_result(target: str):
     in_holdings = ticker in {h["ticker"] for h in st.session_state.holdings}
     in_watchlist = ticker in {w["ticker"] for w in st.session_state.watchlist}
 
-    pe_span    = (f'<span><b style="color:var(--vs-ink)">P/E</b> {pe:.1f}x</span>' if pe else '')
-    pb_span    = (f'<span><b style="color:var(--vs-ink)">P/B</b> {pb:.1f}x</span>' if pb else '')
-    yield_span = (f'<span><b style="color:var(--vs-ink)">Yield</b> {div_yield:.2f}%</span>' if div_yield else '')
-    ret_span   = (f'<span><b style="color:var(--vs-ink)">1yr</b> {_fmt_pct(yr1_ret)}</span>' if yr1_ret is not None else '')
-    cap_span   = (f'<span><b style="color:var(--vs-ink)">Mkt cap</b> {_fmt_aum(mktcap)}</span>' if mktcap else '')
+    pe_span    = (f'<span><b style="color:#1A1A1A">P/E</b> {pe:.1f}x</span>' if pe else '')
+    pb_span    = (f'<span><b style="color:#1A1A1A">P/B</b> {pb:.1f}x</span>' if pb else '')
+    yield_span = (f'<span><b style="color:#1A1A1A">Yield</b> {div_yield:.2f}%</span>' if div_yield else '')
+    ret_span   = (f'<span><b style="color:#1A1A1A">1yr</b> {_fmt_pct(yr1_ret)}</span>' if yr1_ret is not None else '')
+    cap_span   = (f'<span><b style="color:#1A1A1A">Mkt cap</b> {_fmt_aum(mktcap)}</span>' if mktcap else '')
     price_disp = _fmt_price(price, currency + ' ') if price else '—'
 
     st.markdown(
-        f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);border-radius:12px;'
+        f'<div style="background:#FFFFFF;border:1px solid #D4D4D2;border-radius:0;'
         f'padding:18px 22px;margin-bottom:14px;box-shadow:var(--vs-shadow)">'
         f'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
         f'<div>'
-        f'<span style="font-size:1.05rem;font-weight:600;color:var(--vs-navy)">{name}</span>'
-        f'<span style="font-size:0.82rem;color:var(--vs-ink-soft);margin-left:10px">{ticker}</span>'
-        f'<span style="font-size:0.72rem;background:var(--vs-bg-subtle);color:var(--vs-ink-mid);'
-        f'border:1px solid var(--vs-rule);border-radius:4px;padding:2px 8px;margin-left:8px">{group}</span>'
+        f'<span style="font-size:1.05rem;font-weight:600;color:#1A1A1A">{name}</span>'
+        f'<span style="font-size:0.82rem;color:#777777;margin-left:10px">{ticker}</span>'
+        f'<span style="font-size:0.72rem;background:#F0F0EE;color:#444444;'
+        f'border:1px solid #D4D4D2;border-radius:0;padding:2px 8px;margin-left:8px">{group}</span>'
         f'</div>'
-        f'<div style="font-size:1rem;font-weight:600;color:var(--vs-navy)">{price_disp}</div>'
+        f'<div style="font-size:1rem;font-weight:600;color:#1A1A1A">{price_disp}</div>'
         f'</div>'
-        f'<div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:0.82rem;color:var(--vs-ink-mid)">'
-        f'<span><b style="color:var(--vs-ink)">Sector</b> {sector}</span>'
+        f'<div style="margin-top:10px;display:flex;gap:18px;flex-wrap:wrap;font-size:0.82rem;color:#444444">'
+        f'<span><b style="color:#1A1A1A">Sector</b> {sector}</span>'
         f'{pe_span}{pb_span}{yield_span}{ret_span}{cap_span}'
         f'</div>'
         f'</div>',
@@ -3042,7 +3218,12 @@ def _render_dd_search_result(target: str):
 
 def page_deepdive():
     _render_counter.clear()
-    st.markdown("# Deepdive")
+    st.markdown(
+        '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:38px;'
+        'font-weight:700;color:#1A1A1A;letter-spacing:-0.5px;line-height:1.1;'
+        'padding-top:32px;padding-bottom:8px">Deepdive</div>',
+        unsafe_allow_html=True,
+    )
 
     instruments = st.session_state.instruments
     live_data   = {
@@ -3054,7 +3235,7 @@ def page_deepdive():
     # ══════════════════════════════════════════════════════════════════════════
     # SEARCH — shared between both sections
     # ══════════════════════════════════════════════════════════════════════════
-    st.markdown('<div class="section-header">Search & Add</div>', unsafe_allow_html=True)
+    _section_header("Search & Add")
     st.caption("Enter a ticker (e.g. NVDA, HSBA.L, SIE.DE) or company name, then choose where to add it.")
 
     srch_col, btn_col = st.columns([4, 1])
@@ -3140,20 +3321,17 @@ def page_deepdive():
     if st.session_state.dd_search_result:
         _render_dd_search_result(st.session_state.dd_add_target)
 
-    st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
-    st.divider()
-
     # ══════════════════════════════════════════════════════════════════════════
     # SECTION 1 — HOLDINGS
     # ══════════════════════════════════════════════════════════════════════════
     holdings = st.session_state.holdings
-    st.markdown("## Holdings")
+    _section_header("Holdings")
     st.caption("Instruments you own. Track performance against your entry price.")
 
     if not holdings:
         st.markdown(
-            '<div class="changed-banner" style="color:var(--vs-ink-soft)">'
-            'No holdings yet — search above and click <b style="color:var(--vs-ink)">Add to Holdings</b>.'
+            '<div class="changed-banner">'
+            'No holdings yet — search above and click <b>Add to Holdings</b>.'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -3164,25 +3342,22 @@ def page_deepdive():
             miss_groups = {h_tickers[t].get("group", "that market") for t in missing_h}
             st.info(
                 f"{len(missing_h)} holding(s) have no live data. "
-                f"Load **{', '.join(miss_groups)}** from the sidebar to see them."
+                f"Load **{', '.join(miss_groups)}** to see them."
             )
         for entry in holdings:
             _render_instrument_expander(entry, "holdings", live_data)
-
-    st.markdown('<div style="height:1.25rem"></div>', unsafe_allow_html=True)
-    st.divider()
 
     # ══════════════════════════════════════════════════════════════════════════
     # SECTION 2 — WATCHLIST
     # ══════════════════════════════════════════════════════════════════════════
     watchlist = st.session_state.watchlist
-    st.markdown("## Watchlist")
+    _section_header("Watchlist")
     st.caption("Instruments you are monitoring but do not currently hold.")
 
     if not watchlist:
         st.markdown(
-            '<div class="changed-banner" style="color:var(--vs-ink-soft)">'
-            'Nothing on your watchlist — search above and click <b style="color:var(--vs-ink)">Add to Watchlist</b>.'
+            '<div class="changed-banner">'
+            'Nothing on your watchlist — search above and click <b>Add to Watchlist</b>.'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -3193,7 +3368,7 @@ def page_deepdive():
             miss_groups = {wl_tickers[t].get("group", "that market") for t in missing_wl}
             st.info(
                 f"{len(missing_wl)} watchlist item(s) have no live data. "
-                f"Load **{', '.join(miss_groups)}** from the sidebar to see them."
+                f"Load **{', '.join(miss_groups)}** to see them."
             )
         for entry in watchlist:
             _render_instrument_expander(entry, "watchlist", live_data)
@@ -3205,11 +3380,16 @@ def page_deepdive():
 
 def page_compare():
     _render_counter.clear()
-    st.markdown("# Compare")
+    st.markdown(
+        '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:38px;'
+        'font-weight:700;color:#1A1A1A;letter-spacing:-0.5px;line-height:1.1;'
+        'padding-top:32px;padding-bottom:8px">Compare</div>',
+        unsafe_allow_html=True,
+    )
 
     instruments = st.session_state.instruments
     if not instruments:
-        st.info("👈  Load data from the sidebar first.")
+        st.info("Load data first — use the Markets & Data control above.")
         return
 
     ok      = [x for x in instruments if x.get("ok")]
@@ -3246,7 +3426,7 @@ def page_compare():
             render_card(inst, show_add_watchlist=True)
 
     st.divider()
-    st.markdown('<div class="section-header">Detailed metrics</div>', unsafe_allow_html=True)
+    _section_header("Detailed Metrics")
 
     def _roe_fmt(inst):
         v = _f(inst.get("roe"))
@@ -3296,7 +3476,7 @@ def page_compare():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _severity_colour(sev: str) -> str:
-    return {"high": "var(--vs-red)", "medium": "var(--vs-amber)", "low": "var(--vs-green)", "info": "var(--vs-gold)"}.get(sev, "var(--vs-ink-soft)")
+    return {"high": "#777777", "medium": "#444444", "low": "#1A1A1A", "info": "#1A3A5C"}.get(sev, "#777777")
 
 def _severity_icon(sev: str) -> str:
     return {"high": "🔴", "medium": "🟡", "low": "🟢", "info": "🔵"}.get(sev, "⚪")
@@ -3321,7 +3501,12 @@ def _type_label(t: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def page_briefing():
-    st.markdown("# Morning Briefing")
+    st.markdown(
+        '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:38px;'
+        'font-weight:700;color:#1A1A1A;letter-spacing:-0.5px;line-height:1.1;'
+        'padding-top:32px;padding-bottom:8px">Morning Briefing</div>',
+        unsafe_allow_html=True,
+    )
 
     briefing = load_briefing()
 
@@ -3358,11 +3543,11 @@ def page_briefing():
 
     # ── Headline ───────────────────────────────────────────────────────────────
     st.markdown(
-        f'<div style="background:var(--vs-bg-card);border:1px solid var(--vs-rule);'
-        f'border-left:3px solid var(--vs-gold);border-radius:10px;'
+        f'<div style="background:#FFFFFF;border:1px solid #D4D4D2;'
+        f'border-left:3px solid #1A3A5C;border-radius:0;'
         f'padding:18px 22px;margin-bottom:18px;font-family:\'Inter\',sans-serif;'
-        f'font-size:0.92rem;color:var(--vs-ink-mid);line-height:1.7;box-shadow:var(--vs-shadow)">'
-        f'<b style="color:var(--vs-navy);font-weight:600;display:block;margin-bottom:6px">Today\'s Summary</b>'
+        f'font-size:0.92rem;color:#444444;line-height:1.7;box-shadow:var(--vs-shadow)">'
+        f'<b style="color:#1A1A1A;font-weight:600;display:block;margin-bottom:6px">Today\'s Summary</b>'
         f'{briefing.get("headline","")}</div>',
         unsafe_allow_html=True,
     )
@@ -3370,8 +3555,8 @@ def page_briefing():
     # ── Macro section ──────────────────────────────────────────────────────────
     macro = briefing.get("macro", {})
     tone  = macro.get("tone", "mixed")
-    tone_colours = {"constructive": "var(--vs-green)", "mixed": "var(--vs-amber)", "cautious": "var(--vs-red)"}
-    tone_col = tone_colours.get(tone, "var(--vs-ink-soft)")
+    tone_colours = {"constructive": "#1A1A1A", "mixed": "#444444", "cautious": "#777777"}
+    tone_col = tone_colours.get(tone, "#777777")
 
     with st.expander(f"📊 Macro — {tone.title()} backdrop", expanded=True):
         st.markdown(
@@ -3396,10 +3581,10 @@ def page_briefing():
                 col = _severity_colour(sig.get("severity", "high"))
                 st.markdown(
                     f'<div style="border-left:3px solid {col};padding:10px 14px;'
-                    f'margin-bottom:8px;background:var(--vs-bg-raised);border-radius:6px;'
-                    f'border:1px solid var(--vs-rule)">'
-                    f'<b style="color:var(--vs-navy);font-size:0.88rem">{sig["title"]}</b><br>'
-                    f'<span style="color:var(--vs-ink-mid);font-size:0.83rem">{sig.get("detail","")}</span>'
+                    f'margin-bottom:8px;background:#F8F8F6;border-radius:0;'
+                    f'border:1px solid #D4D4D2">'
+                    f'<b style="color:#1A1A1A;font-size:0.88rem">{sig["title"]}</b><br>'
+                    f'<span style="color:#444444;font-size:0.83rem">{sig.get("detail","")}</span>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -3413,17 +3598,25 @@ def page_briefing():
                 cols = st.columns(2)
                 for j, opp in enumerate(pair):
                     with cols[j]:
-                        score_col = score_colour(_f(opp.get("score")))
+                        opp_score = _f(opp.get("score"))
+                        opp_score_cls = "card-score-block" + ("" if opp_score and opp_score >= 45 else " low")
+                        opp_score_disp = f"{opp_score:.0f}" if opp_score is not None else "—"
+                        opp_lbl = score_label(opp_score) if opp_score is not None else "—"
                         st.markdown(
                             f'<div class="card">'
                             f'<div class="card-header">'
-                            f'<div><div class="card-title">{opp.get("name","")}</div>'
-                            f'<div class="card-sub">{opp.get("ticker","")} · {opp.get("group","")}</div></div>'
-                            f'<div class="card-score-box" style="background:{score_bg(_f(opp.get("score")))}">'
-                            f'<div class="card-score-num" style="color:{score_col}">{opp.get("score","—")}</div>'
-                            f'<div class="card-score-lbl" style="color:{score_col}">{opp.get("label","")}</div>'
+                            f'<div style="flex:1;min-width:0">'
+                            f'<div class="card-name">{opp.get("name","")}</div>'
+                            f'<div class="card-ticker-line"><span class="ticker">{opp.get("ticker","")}</span></div>'
+                            f'<div class="card-market-line">{opp.get("group","")}</div>'
+                            f'</div>'
+                            f'<div class="{opp_score_cls}">'
+                            f'<div class="card-score-num">{opp_score_disp}</div>'
+                            f'<div class="card-score-lbl">{opp_lbl}</div>'
                             f'</div></div>'
-                            f'<div class="card-verdict">{opp.get("verdict","")}</div>'
+                            f'<div class="card-bullets"><div class="card-bullet">'
+                            f'<span class="card-bullet-icon">↑</span>'
+                            f'<span>{opp.get("verdict","")}</span></div></div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
@@ -3434,17 +3627,17 @@ def page_briefing():
         with st.expander(f"👁️ Your watchlist ({len(wl_data)} items)", expanded=False):
             for item in wl_data:
                 score_val = _f(item.get("score"))
-                score_col = score_colour(score_val) if score_val else "var(--vs-ink-soft)"
+                score_col = "#1A1A1A" if score_val and score_val >= 45 else "#777777"
                 ytd_str   = _fmt_pct(item.get("ytd_pct"))
                 yr1_str   = _fmt_pct(item.get("yr1_pct"))
                 st.markdown(
                     f'<div style="display:flex;justify-content:space-between;padding:9px 0;'
-                    f'border-bottom:1px solid var(--vs-rule-soft)">'
-                    f'<div><b style="color:var(--vs-navy);font-weight:600">{item.get("name","")}</b> '
-                    f'<span style="color:var(--vs-ink-soft);font-size:0.82rem">{item.get("ticker","")}</span></div>'
+                    f'border-bottom:1px solid #E0E0DE">'
+                    f'<div><b style="color:#1A1A1A;font-weight:600">{item.get("name","")}</b> '
+                    f'<span style="color:#777777;font-size:0.82rem">{item.get("ticker","")}</span></div>'
                     f'<div style="display:flex;gap:16px;align-items:center">'
-                    f'<span style="color:var(--vs-ink-soft);font-size:0.8rem">YTD {ytd_str}</span>'
-                    f'<span style="color:var(--vs-ink-soft);font-size:0.8rem">1Y {yr1_str}</span>'
+                    f'<span style="color:#777777;font-size:0.8rem">YTD {ytd_str}</span>'
+                    f'<span style="color:#777777;font-size:0.8rem">1Y {yr1_str}</span>'
                     f'<span style="color:{score_col};font-weight:600">{item.get("score","—")}</span>'
                     f'</div></div>',
                     unsafe_allow_html=True,
@@ -3457,27 +3650,27 @@ def page_briefing():
         with st.expander(f"📰 Market headlines ({len(news_items)})", expanded=False):
             for item in news_items:
                 sent = item.get("sentiment", 0)
-                col  = "var(--vs-green)" if sent > 0.2 else "var(--vs-red)" if sent < -0.2 else "var(--vs-ink-soft)"
+                col  = "#1A1A1A" if sent > 0.2 else "#777777" if sent < -0.2 else "#777777"
                 icon = "▲" if sent > 0.2 else "▼" if sent < -0.2 else "─"
                 link = item.get("link", "")
                 title = item.get("title", "")
                 feed  = item.get("feed", "")
                 if link:
                     st.markdown(
-                        f'<div style="padding:7px 0;border-bottom:1px solid var(--vs-rule-soft)">'
+                        f'<div style="padding:7px 0;border-bottom:1px solid #E0E0DE">'
                         f'<span style="color:{col};font-size:0.75rem">{icon} </span>'
-                        f'<a href="{link}" target="_blank" style="color:var(--vs-navy);text-decoration:none;'
+                        f'<a href="{link}" target="_blank" style="color:#1A1A1A;text-decoration:none;'
                         f'font-size:0.87rem">{title}</a>'
-                        f'<span style="color:var(--vs-ink-faint);font-size:0.74rem"> · {feed}</span>'
+                        f'<span style="color:#AAAAAA;font-size:0.74rem"> · {feed}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
                 else:
                     st.markdown(
-                        f'<div style="padding:7px 0;border-bottom:1px solid var(--vs-rule-soft)">'
+                        f'<div style="padding:7px 0;border-bottom:1px solid #E0E0DE">'
                         f'<span style="color:{col};font-size:0.75rem">{icon} </span>'
-                        f'<span style="color:var(--vs-navy);font-size:0.87rem">{title}</span>'
-                        f'<span style="color:var(--vs-ink-faint);font-size:0.74rem"> · {feed}</span>'
+                        f'<span style="color:#1A1A1A;font-size:0.87rem">{title}</span>'
+                        f'<span style="color:#AAAAAA;font-size:0.74rem"> · {feed}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
@@ -3490,10 +3683,14 @@ def page_briefing():
 
 def page_settings():
     _render_counter.clear()
-    st.markdown("# Scoring Settings")
-    st.caption(
-        "Adjust how instruments are scored. Changes take effect when you click "
-        "**Apply & Rescore** — no data is re-fetched, scoring is instant."
+    st.markdown(
+        '<div style="font-family:\'Playfair Display\',Georgia,serif;font-size:38px;'
+        'font-weight:700;color:#1A1A1A;letter-spacing:-0.5px;line-height:1.1;'
+        'padding-top:32px;padding-bottom:4px">Scoring Settings</div>'
+        '<div style="font-family:\'Inter\',sans-serif;font-size:13px;color:#777777;'
+        'margin-bottom:24px">Adjust how instruments are scored. Changes take effect when '
+        'you click Apply &amp; Rescore — no data is re-fetched, scoring is instant.</div>',
+        unsafe_allow_html=True,
     )
 
     p   = st.session_state.prefs
@@ -3504,7 +3701,7 @@ def page_settings():
         """Tiny horizontal stacked bar showing relative weight distribution."""
         total = sum(vals) or 1
         segments = ""
-        colours = ["#0D1B2A", "#2C4460", "#B8924A", "#9B6B1A", "#8B2635"]
+        colours = ["#1A3A5C", "#444444", "#777777", "#1A1A1A", "#AAAAAA"]
         for i, (v, lbl) in enumerate(zip(vals, labels)):
             pct = v / total * 100
             col = colours[i % len(colours)]
@@ -3513,7 +3710,7 @@ def page_settings():
                 f'height:8px;min-width:2px"></div>'
             )
         st.markdown(
-            f'<div style="display:flex;gap:1px;border-radius:4px;overflow:hidden;margin-bottom:4px">{segments}</div>',
+            f'<div style="display:flex;gap:1px;border-radius:0;overflow:hidden;margin-bottom:4px">{segments}</div>',
             unsafe_allow_html=True,
         )
 
