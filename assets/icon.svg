@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Candlestick chart: 4 candles with bodies and wicks, monoline, #1A3A5C stroke, no fill -->
+  <!-- Candle 1 (leftmost) - bullish, tall -->
+  <line x1="5" y1="4" x2="5" y2="8" stroke="#1A3A5C" stroke-width="1.5" stroke-linecap="round"/>
+  <rect x="3" y="8" width="4" height="10" stroke="#1A3A5C" stroke-width="1.5" fill="none" rx="0"/>
+  <line x1="5" y1="18" x2="5" y2="22" stroke="#1A3A5C" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Candle 2 - bearish, short -->
+  <line x1="11" y1="9" x2="11" y2="12" stroke="#1A3A5C" stroke-width="1.5" stroke-linecap="round"/>
+  <rect x="9" y="12" width="4" height="6" stroke="#1A3A5C" stroke-width="1.5" fill="none" rx="0"/>
+  <line x1="11" y1="18" x2="11" y2="24" stroke="#1A3A5C" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Candle 3 - bullish, medium -->
+  <line x1="17" y1="6" x2="17" y2="10" stroke="#1A3A5C" stroke-width="1.5" stroke-linecap="round"/>
+  <rect x="15" y="10" width="4" height="8" stroke="#1A3A5C" stroke-width="1.5" fill="none" rx="0"/>
+  <line x1="17" y1="18" x2="17" y2="21" stroke="#1A3A5C" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Candle 4 (rightmost) - bullish, medium-tall -->
+  <line x1="23" y1="5" x2="23" y2="9" stroke="#1A3A5C" stroke-width="1.5" stroke-linecap="round"/>
+  <rect x="21" y="9" width="4" height="9" stroke="#1A3A5C" stroke-width="1.5" fill="none" rx="0"/>
+  <line x1="23" y1="18" x2="23" y2="23" stroke="#1A3A5C" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

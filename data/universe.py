@@ -29,7 +29,7 @@ UNIVERSE = {
     # ══════════════════════════════════════════════════════════════════════════
     # UK — Full FTSE 100
     # ══════════════════════════════════════════════════════════════════════════
-    "🇬🇧 UK Stocks": {
+    "UK Stocks": {
         "tickers": {
             "AAF.L":   "Airtel Africa",
             "AAL.L":   "Anglo American",
@@ -134,7 +134,7 @@ UNIVERSE = {
     # ══════════════════════════════════════════════════════════════════════════
     # EU — DAX 40 + CAC 40 + AEX + IBEX 35 + FTSE MIB + Nordic leaders
     # ══════════════════════════════════════════════════════════════════════════
-    "🇪🇺 EU Stocks": {
+    "EU Stocks": {
         "tickers": {
             # ── DAX 40 (Germany) ──────────────────────────────────────────────
             "ADS.DE":   "Adidas",
@@ -340,7 +340,7 @@ UNIVERSE = {
     # ══════════════════════════════════════════════════════════════════════════
     # US — Full S&P 500 (all 11 GICS sectors, 503 constituents)
     # ══════════════════════════════════════════════════════════════════════════
-    "🇺🇸 US Stocks": {
+    "US Stocks": {
         "tickers": {
             # ── Information Technology ────────────────────────────────────────
             "AAPL":  "Apple",
@@ -711,7 +711,7 @@ UNIVERSE = {
     # ══════════════════════════════════════════════════════════════════════════
     # ETFs — passive, factor, fixed income
     # ══════════════════════════════════════════════════════════════════════════
-    "📦 ETFs & Index Funds": {
+    "ETFs & Index Funds": {
         "tickers": {
             # World
             "VWRL.L":   "Vanguard FTSE All-World",
@@ -749,7 +749,7 @@ UNIVERSE = {
     # ══════════════════════════════════════════════════════════════════════════
     # Money Market & Short Duration
     # ══════════════════════════════════════════════════════════════════════════
-    "💰 Money Market & Short Duration": {
+    "Money Market & Short Duration": {
         "tickers": {
             "CSH2.L":  "iShares £ Ultrashort Bond",
             "IS15.L":  "iShares UK Gilts 1-3yr",

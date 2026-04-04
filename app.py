@@ -25,7 +25,7 @@ except ImportError:
 try:
     import yfinance as yf  # noqa: F401  (checked here so we can show friendly error)
 except ImportError:
-    st.error("⚠️ Required package missing. Close this window and re-run 'Start Value Screener'.")
+    st.error("Required package missing. Close this window and re-run 'Start Value Screener'.")
     st.stop()
 
 import pandas as pd
@@ -55,7 +55,7 @@ from utils.deep_analysis   import (run_deep_analysis, load_cached_analysis,
 
 st.set_page_config(
     page_title="Value Screener",
-    page_icon="📊",
+    page_icon=str(Path(__file__).parent / "assets" / "icon.svg"),
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -134,22 +134,14 @@ st.markdown("""
   --vs-bg-subtle:   #E8E8E6;
   --vs-bg-card:     #FFFFFF;
   --vs-bg-raised:   #F8F8F6;
-  --vs-navy:        #1A1A1A;
-  --vs-navy-mid:    #0f2540;
-  --vs-navy-soft:   #1A3A5C;
   --vs-accent:      #1A3A5C;
+  --vs-accent-dark: #122d48;
   --vs-ink:         #1A1A1A;
   --vs-ink-mid:     #444444;
   --vs-ink-soft:    #777777;
   --vs-ink-faint:   #AAAAAA;
   --vs-rule:        #D4D4D2;
   --vs-rule-soft:   #E0E0DE;
-  --vs-green:       #1A1A1A;
-  --vs-green-bg:    #F0F0EE;
-  --vs-amber:       #444444;
-  --vs-amber-bg:    #F0F0EE;
-  --vs-red:         #777777;
-  --vs-red-bg:      #F0F0EE;
   --vs-serif:       'Playfair Display', Georgia, 'Times New Roman', serif;
   --vs-sans:        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --vs-radius:      0px;
@@ -175,6 +167,20 @@ body, .stApp {
   padding-left: 40px !important;
   padding-right: 40px !important;
   max-width: 1200px !important;
+}
+[data-testid="stMainBlockContainer"] {
+  padding-top: 0 !important;
+}
+.vs-topnav + div,
+.vs-topnav + [data-testid="stVerticalBlock"] {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+[data-testid="manage-app-button"],
+[class*="manage-app"],
+.st-emotion-cache-h4xjwg,
+iframe[src*="statuspage"] {
+  display: none !important;
 }
 
 /* ── Remove all rounding everywhere ── */
@@ -258,7 +264,7 @@ header[data-testid="stHeader"] { display: none !important; }
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #777777;
+  color: #444444;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -268,12 +274,13 @@ header[data-testid="stHeader"] { display: none !important; }
 .vs-hero {
   background: #1A3A5C;
   padding: 36px 40px 32px;
-  border-bottom: 3px solid #0f2540;
+  border-bottom: 3px solid rgba(0,0,0,0.2);
   margin-left: -40px;
   margin-right: -40px;
   width: calc(100% + 80px);
   box-sizing: border-box;
   margin-bottom: 0;
+  margin-top: 0;
 }
 .vs-hero-greeting {
   font-family: var(--vs-serif);
@@ -290,7 +297,7 @@ header[data-testid="stHeader"] { display: none !important; }
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(255,255,255,0.55);
+  color: rgba(255,255,255,0.78);
   margin-bottom: 28px;
 }
 .vs-hero-stats {
@@ -301,7 +308,7 @@ header[data-testid="stHeader"] { display: none !important; }
   border: 1px solid rgba(255,255,255,0.15);
 }
 .vs-hero-stat {
-  background: rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.09);
   padding: 20px 24px;
 }
 .vs-hero-stat-val {
@@ -319,7 +326,7 @@ header[data-testid="stHeader"] { display: none !important; }
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(255,255,255,0.55);
+  color: rgba(255,255,255,0.78);
 }
 
 /* ── Section headers (BBC-style) ── */
@@ -354,10 +361,11 @@ header[data-testid="stHeader"] { display: none !important; }
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #1A3A5C;
+  color: #777777;
   text-decoration: none;
   cursor: pointer;
 }
+.vs-section-link:hover { color: #1A3A5C !important; }
 
 /* Keep old section-header for sidebar/legacy usage */
 .section-header {
@@ -838,7 +846,7 @@ header[data-testid="stHeader"] { display: none !important; }
   padding: 10px 20px !important;
 }
 .stButton button[kind="primary"]:hover {
-  background: #0f2540 !important;
+  background: #122d48 !important;
 }
 .stButton button[kind="secondary"],
 .stButton button:not([kind]) {
@@ -1129,7 +1137,7 @@ def _init_state():
     if "prefs" not in st.session_state:
         st.session_state.prefs = _load_json("prefs.json", {
             # Display filters
-            "groups":    ["🇬🇧 UK Stocks", "📦 ETFs & Index Funds"],
+            "groups":    ["UK Stocks", "ETFs & Index Funds"],
             "min_score": 0,
             "min_yield": 0.0,
             "max_pe":    100,
@@ -1155,6 +1163,20 @@ def _init_state():
             "wt_mm_aum":     25,
             "wt_mm_ter":     15,
         })
+
+    # ── Migrate legacy emoji market group keys in saved prefs ────────────────
+    _key_map = {
+        "🇬🇧 UK Stocks": "UK Stocks",
+        "🇪🇺 EU Stocks": "EU Stocks",
+        "🇺🇸 US Stocks": "US Stocks",
+        "📦 ETFs & Index Funds": "ETFs & Index Funds",
+        "💰 Money Market & Short Duration": "Money Market & Short Duration",
+    }
+    _groups = st.session_state.prefs.get("groups", [])
+    _migrated = [_key_map.get(g, g) for g in _groups]
+    if _migrated != _groups:
+        st.session_state.prefs["groups"] = _migrated
+        _save_json("prefs.json", st.session_state.prefs)
     if "scoring_changed" not in st.session_state:
         st.session_state.scoring_changed = False  # True when weights changed but not rescored
     if "last_fetch" not in st.session_state:
@@ -1276,6 +1298,155 @@ def _next_market_event() -> str | None:
 def _pill(label, value, cls=""):
     """Render an HTML metric pill for the instrument cards."""
     return f'<span class="metric-pill {cls}"><b>{value}</b> {label}</span>'
+
+
+# ── Monoline SVG icon library (thin-stroke, no fill, consistent 1.5px stroke) ─
+# Used throughout the app in place of emoji. All icons: viewBox 0 0 16 16,
+# stroke-width 1.5, stroke-linecap/join round, fill none.
+_SVG: dict[str, str] = {
+    "gear": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<circle cx="8" cy="8" r="2.5"/>'
+        '<path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42'
+        'M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/>'
+        '</svg>'
+    ),
+    "analyse": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#1A3A5C"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<line x1="8" y1="14" x2="8" y2="10"/>'
+        '<line x1="5" y1="14" x2="11" y2="14"/>'
+        '<circle cx="8" cy="6.5" r="3"/>'
+        '<line x1="8" y1="1" x2="8" y2="3.5"/>'
+        '</svg>'
+    ),
+    "trash": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<polyline points="2 4 14 4"/>'
+        '<path d="M5 4V2h6v2"/>'
+        '<rect x="3" y="4" width="10" height="10"/>'
+        '<line x1="6" y1="7" x2="6" y2="11"/>'
+        '<line x1="10" y1="7" x2="10" y2="11"/>'
+        '</svg>'
+    ),
+    "newspaper": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<rect x="1" y="2" width="14" height="12"/>'
+        '<line x1="4" y1="6" x2="12" y2="6"/>'
+        '<line x1="4" y1="9" x2="12" y2="9"/>'
+        '<line x1="4" y1="12" x2="8" y2="12"/>'
+        '</svg>'
+    ),
+    "chart": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<line x1="2" y1="14" x2="14" y2="14"/>'
+        '<rect x="3" y="8" width="2.5" height="6"/>'
+        '<rect x="6.75" y="5" width="2.5" height="9"/>'
+        '<rect x="10.5" y="2" width="2.5" height="12"/>'
+        '</svg>'
+    ),
+    "star": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<polygon points="8 1 10 6 15 6 11 9.5 12.5 15 8 12 3.5 15 5 9.5 1 6 6 6"/>'
+        '</svg>'
+    ),
+    "eye": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<path d="M1 8s3-5.5 7-5.5S15 8 15 8s-3 5.5-7 5.5S1 8 1 8z"/>'
+        '<circle cx="8" cy="8" r="2"/>'
+        '</svg>'
+    ),
+    "shield": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<path d="M8 1L2 3.5v4C2 11 5 14 8 15c3-1 6-4 6-7.5v-4L8 1z"/>'
+        '</svg>'
+    ),
+    "box": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<polyline points="14 5 8 2 2 5"/>'
+        '<polyline points="2 5 2 11 8 14 14 11 14 5"/>'
+        '<polyline points="8 14 8 8"/>'
+        '<polyline points="14 5 8 8 2 5"/>'
+        '</svg>'
+    ),
+    "coin": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<circle cx="8" cy="8" r="6.5"/>'
+        '<path d="M8 5v6M6.5 6.5h2.25a1.25 1.25 0 0 1 0 2.5H6.5"/>'
+        '</svg>'
+    ),
+    "satellite": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<circle cx="6" cy="10" r="2.5"/>'
+        '<path d="M9 7l4-4M11 3l2 2"/>'
+        '<path d="M4 8C4 5.8 5.8 4 8 4"/>'
+        '<path d="M2 10C2 5.4 5.4 2 10 2"/>'
+        '</svg>'
+    ),
+    "reset": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#777777"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<path d="M2.5 8A5.5 5.5 0 1 1 5 3.4"/>'
+        '<polyline points="5 1 5 4 2 4"/>'
+        '</svg>'
+    ),
+    "apply": (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#FFFFFF"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px;flex-shrink:0">'
+        '<circle cx="8" cy="8" r="6.5"/>'
+        '<polyline points="5 8 7 10 11 6"/>'
+        '</svg>'
+    ),
+    # Severity dot indicators — monoline circle outlines, no fill, stroke colour encodes priority
+    "dot-high":   (
+        '<svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="#1A1A1A"'
+        ' stroke-width="1.8" style="display:inline-block;vertical-align:-1px;flex-shrink:0">'
+        '<circle cx="5" cy="5" r="3.5"/></svg>'
+    ),
+    "dot-medium": (
+        '<svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="#444444"'
+        ' stroke-width="1.8" style="display:inline-block;vertical-align:-1px;flex-shrink:0">'
+        '<circle cx="5" cy="5" r="3.5"/></svg>'
+    ),
+    "dot-low":    (
+        '<svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="#777777"'
+        ' stroke-width="1.8" style="display:inline-block;vertical-align:-1px;flex-shrink:0">'
+        '<circle cx="5" cy="5" r="3.5"/></svg>'
+    ),
+    "dot-info":   (
+        '<svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="#AAAAAA"'
+        ' stroke-width="1.8" style="display:inline-block;vertical-align:-1px;flex-shrink:0">'
+        '<circle cx="5" cy="5" r="3.5"/></svg>'
+    ),
+}
+
+def _svg(name: str, label: str = "") -> str:
+    """Return SVG icon string, optionally followed by a label with non-breaking space."""
+    icon = _SVG.get(name, "")
+    return f'{icon}&nbsp;{label}' if label else icon
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1437,7 +1608,7 @@ if _do_auto_refresh:
             ],
             "fetched_at": datetime.now(timezone.utc).isoformat(),
         })
-        st.session_state.toast = (f"📡 Data refreshed — {_refresh_reason}", "info")
+        st.session_state.toast = (f"Data refreshed — {_refresh_reason}", "info")
         st.rerun()
 
 
@@ -1504,7 +1675,7 @@ def _render_topnav():
     for label, key in nav_pages:
         display = label
         if key == "briefing" and _high_count > 0:
-            display = f"Briefing · {_high_count}"
+            display = f'Briefing <span style="display:inline-block;background:transparent;border:1px solid #1A3A5C;color:#1A3A5C;font-size:9px;font-weight:700;padding:1px 5px;letter-spacing:0.05em;vertical-align:1px">{_high_count}</span>'
         active_cls = " active" if current_page == key else ""
         links_html += (
             f'<span class="vs-topnav-link{active_cls}" '
@@ -1524,101 +1695,37 @@ def _render_topnav():
     )
     st.markdown(nav_html, unsafe_allow_html=True)
 
-    # ── Invisible Streamlit buttons wired to nav clicks via JS ───────────────
-    # Sentinel div immediately before the hidden button row — CSS hides the next sibling.
+    # ── JS: wire nav span clicks directly via query_params (no Streamlit buttons) ─
     st.markdown(
-        '<style>'
-        '.vs-nav-sentinel + div,'
-        '.vs-nav-sentinel + div > div,'
-        '.vs-nav-sentinel ~ div[data-testid="stHorizontalBlock"],'
-        '.vs-nav-sentinel ~ [data-testid="stHorizontalBlock"] {'
-        '  display:none !important;'
-        '  height:0 !important;'
-        '  overflow:hidden !important;'
-        '  margin:0 !important;'
-        '  padding:0 !important;'
-        '}'
-        '</style>'
-        '<div class="vs-nav-sentinel" style="height:0;overflow:hidden;margin:0;padding:0"></div>',
+        '<script>'
+        '(function(){'
+        '  function wireNav(){'
+        '    var pairs=['
+        '      ["topnav_home","home"],'
+        '      ["topnav_deepdive","deepdive"],'
+        '      ["topnav_screener","screener"],'
+        '      ["topnav_compare","compare"],'
+        '      ["topnav_briefing","briefing"],'
+        '      ["topnav_settings","settings"]'
+        '    ];'
+        '    pairs.forEach(function(p){'
+        '      var el=document.getElementById(p[0]);'
+        '      if(!el||el._wired)return;'
+        '      el._wired=true;'
+        '      el.addEventListener("click",function(){'
+        '        var u=new URL(window.location.href);'
+        '        u.searchParams.set("p",p[1]);'
+        '        window.location.href=u.toString();'
+        '      });'
+        '    });'
+        '  }'
+        '  var obs=new MutationObserver(wireNav);'
+        '  obs.observe(document.body,{childList:true,subtree:true});'
+        '  wireNav();'
+        '})();'
+        '</script>',
         unsafe_allow_html=True,
     )
-
-    all_nav = nav_pages + [("Settings", "settings")]
-    btn_cols = st.columns(len(all_nav))
-    for i, (label, key) in enumerate(all_nav):
-        with btn_cols[i]:
-            if st.button(label, key=f"topnav_btn_{key}"):
-                st.session_state.page = key
-                st.rerun()
-
-    st.markdown(
-        '<div class="vs-nav-sentinel-end" style="height:0;overflow:hidden;margin:0;padding:0"></div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── JS: wire nav span clicks to hidden buttons + hide the button row ─────
-    js = """
-    <script>
-    (function() {
-        var NAV_KEYS = ['home','deepdive','screener','compare','briefing','settings'];
-
-        function hideNavBtns() {
-            // Find all Streamlit buttons whose text matches a nav key and hide their
-            // column/block ancestors up to (but not including) the main block container.
-            NAV_KEYS.forEach(function(key) {
-                document.querySelectorAll('button').forEach(function(btn) {
-                    if (btn.innerText.trim().toLowerCase() === key) {
-                        // Walk up to find the stHorizontalBlock or column wrapper and hide it
-                        var el = btn;
-                        for (var depth = 0; depth < 8; depth++) {
-                            el = el.parentElement;
-                            if (!el) break;
-                            var tid = el.getAttribute('data-testid') || '';
-                            if (tid === 'stHorizontalBlock' || tid === 'column') {
-                                // Hide the whole horizontal block (the row of all nav buttons)
-                                if (tid === 'stHorizontalBlock') {
-                                    el.style.cssText = 'display:none!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;';
-                                }
-                                break;
-                            }
-                        }
-                    }
-                });
-            });
-        }
-
-        function wireNav() {
-            var pairs = [
-                ['topnav_home',     'home'],
-                ['topnav_deepdive', 'deepdive'],
-                ['topnav_screener', 'screener'],
-                ['topnav_compare',  'compare'],
-                ['topnav_briefing', 'briefing'],
-                ['topnav_settings', 'settings'],
-            ];
-            pairs.forEach(function(p) {
-                var span = document.getElementById(p[0]);
-                if (!span || span._wired) return;
-                span._wired = true;
-                span.style.cursor = 'pointer';
-                span.addEventListener('click', function() {
-                    var btns = document.querySelectorAll('button');
-                    for (var i = 0; i < btns.length; i++) {
-                        if (btns[i].innerText.trim().toLowerCase() === p[1]) {
-                            btns[i].click(); break;
-                        }
-                    }
-                });
-            });
-            hideNavBtns();
-        }
-        var obs = new MutationObserver(wireNav);
-        obs.observe(document.body, {childList:true, subtree:true});
-        wireNav();
-    })();
-    </script>
-    """
-    st.markdown(js, unsafe_allow_html=True)
 
 
 _render_topnav()
@@ -1630,9 +1737,9 @@ _render_topnav()
 
 def _render_data_controls():
     """Markets selector + refresh button, shown as a top-of-page control strip."""
-    chosen_groups = st.session_state.prefs.get("groups", ["🇬🇧 UK Stocks", "📦 ETFs & Index Funds"])
+    chosen_groups = st.session_state.prefs.get("groups", ["UK Stocks", "ETFs & Index Funds"])
 
-    with st.expander("⚙ Markets & Data", expanded=not st.session_state.instruments):
+    with st.expander("Markets & Data", expanded=not st.session_state.instruments):
         chosen_groups = st.multiselect(
             "Markets to load",
             list(UNIVERSE.keys()),
@@ -1709,7 +1816,7 @@ def _render_data_controls():
 
 def _render_screen_filters():
     """Filter sliders for the Screener page."""
-    with st.expander("⚙ Filters", expanded=False):
+    with st.expander("Filters", expanded=False):
         p = st.session_state.prefs
         fc1, fc2, fc3, fc4 = st.columns(4)
         with fc1:
@@ -1758,11 +1865,11 @@ def _show_toast():
     if st.session_state.toast:
         msg, kind = st.session_state.toast
         if kind == "success":
-            st.toast(msg, icon="✅")
+            st.toast(msg, icon=None)
         elif kind == "info":
-            st.toast(msg, icon="ℹ️")
+            st.toast(msg, icon=None)
         elif kind == "warning":
-            st.toast(msg, icon="⚠️")
+            st.toast(msg, icon=None)
         st.session_state.toast = None
 
 
@@ -1881,7 +1988,7 @@ def _render_macro_bar():
     if gilt is not None:
         items.append(f'<div class="macro-item"><div class="macro-item-val" style="color:{rate_col(gilt)}">{gilt:.2f}%</div><div class="macro-item-lbl">UK Gilt 10Y</div></div>')
     if t10y2y is not None:
-        label = "⚠ Inverted" if t10y2y < 0 else "Yield Curve"
+        label = "Inverted" if t10y2y < 0 else "Yield Curve"
         items.append(f'<div class="macro-item"><div class="macro-item-val" style="color:{curve_col(t10y2y)}">{t10y2y:+.2f}%</div><div class="macro-item-lbl">{label}</div></div>')
     if vix is not None:
         items.append(f'<div class="macro-item"><div class="macro-item-val" style="color:{vix_col(vix)}">{vix:.1f}</div><div class="macro-item-lbl">VIX</div></div>')
@@ -2152,7 +2259,7 @@ def render_card(inst: dict, show_add_watchlist=True):
     with action_col:
         if show_add_watchlist:
             if is_wl:
-                if st.button("⭐ Remove",     key=f"rm_wl_{_ks}", use_container_width=True):
+                if st.button("Remove",     key=f"rm_wl_{_ks}", use_container_width=True):
                     st.session_state.watchlist = [
                         w for w in st.session_state.watchlist if w["ticker"] != ticker
                     ]
@@ -2202,24 +2309,27 @@ def _home_summary_tile(col, num, label, colour="#1A1A1A"):
 def _section_header(label, page_key=None):
     """Render the BBC-style section header with optional 'View all →' link.
 
-    Navigation is wired entirely via JS clicking the already-rendered topnav hidden
-    button for the target page — no additional hidden Streamlit button is created here.
+    Navigation is wired entirely via JS setting query_params to navigate.
     """
     link_html = ""
     wire_js = ""
     if page_key:
         link_id = f"sec_link_{page_key}_{label[:6].replace(' ','_')}"
         link_html = f'<span class="vs-section-link" id="{link_id}">View all →</span>'
-        # JS: clicking the section link triggers the matching topnav hidden button
+        # JS: clicking the section link sets query_params to navigate
         wire_js = (
             f'<script>'
-            f'(function(){{var lnk=document.getElementById("{link_id}");'
-            f'if(lnk&&!lnk._wired){{lnk._wired=true;'
-            f'lnk.addEventListener("click",function(){{'
-            f'var btns=document.querySelectorAll("button");'
-            f'for(var i=0;i<btns.length;i++){{'
-            f'if(btns[i].innerText.trim().toLowerCase()==="{page_key.lower()}"){{btns[i].click();break;}}'
-            f'}}}});}}}})();</script>'
+            f'(function(){{'
+            f'  var lnk=document.getElementById("{link_id}");'
+            f'  if(lnk&&!lnk._wired){{'
+            f'    lnk._wired=true;'
+            f'    lnk.addEventListener("click",function(){{'
+            f'      var u=new URL(window.location.href);'
+            f'      u.searchParams.set("p","{page_key}");'
+            f'      window.location.href=u.toString();'
+            f'    }});'
+            f'  }}'
+            f'}})();</script>'
         )
 
     st.markdown(
@@ -2252,7 +2362,7 @@ def page_home():
 
     # ── Build status strings for hero timestamp ───────────────────────────────
     if age is not None:
-        age_str = ("Live" if age < 1 else f"{int(age)}h old" if age < 8 else f"Stale — {int(age)}h")
+        age_str = ("Live" if age < 1 else f"{int(age)}h ago" if age < 8 else f"{int(age)}h ago — refresh below")
     else:
         age_str = "No data loaded"
     last_surv = get_last_run_time()
@@ -2689,14 +2799,14 @@ def _do_watchlist_search(query: str):
             exchange = info.get("exchange", "")
             currency = info.get("currency", "")
             if ticker.endswith(".L"):
-                group = "🇬🇧 UK Stocks"
+                group = "UK Stocks"
             elif ticker.endswith((".DE", ".PA", ".AS", ".MC", ".MI", ".SW",
                                    ".ST", ".CO", ".HE", ".OL")):
-                group = "🇪🇺 EU Stocks"
+                group = "EU Stocks"
             elif asset_class == "ETF":
-                group = "📦 ETFs & Index Funds"
+                group = "ETFs & Index Funds"
             else:
-                group = "🇺🇸 US Stocks"
+                group = "US Stocks"
 
             div_raw = _f(info.get("dividendYield"))
             if div_raw is None:
@@ -2803,7 +2913,7 @@ def _render_search_result():
     act_c1, act_c2, _ = st.columns([2, 2, 4])
     with act_c1:
         if already_in_wl:
-            st.success(f"✓ Already on watchlist")
+            st.success("Already on watchlist")
         else:
             if st.button(f"⭐ Add {ticker} to watchlist", key="wl_sr_add", use_container_width=True):
                 entry = {
@@ -2821,7 +2931,7 @@ def _render_search_result():
                 st.session_state.wl_search_result = None
                 st.rerun()
     with act_c2:
-        if st.button("✕ Clear result", key="wl_sr_clear", use_container_width=True):
+        if st.button("Clear result", key="wl_sr_clear", use_container_width=True):
             st.session_state.wl_search_result = None
             st.rerun()
 
@@ -2938,11 +3048,11 @@ def _render_deep_analysis(inst: dict):
     # Run controls
     btn_c1, btn_c2, _ = st.columns([2, 2, 4])
     with btn_c1:
-        run_label = "🔬 Re-analyse" if cached else "🔬 Analyse"
+        run_label = "Re-analyse" if cached else "Analyse"
         run_clicked = st.button(run_label, key=f"da_run_{ticker}", use_container_width=True,
                                 type="primary")
     with btn_c2:
-        if cached and st.button("🗑 Clear analysis", key=f"da_clear_{ticker}",
+        if cached and st.button("Clear analysis", key=f"da_clear_{ticker}",
                                 use_container_width=True):
             try:
                 from utils.deep_analysis import _cache_file
@@ -3083,7 +3193,7 @@ def _refresh_single_ticker(wl_entry: dict):
     """
     ticker     = wl_entry["ticker"]
     name       = wl_entry.get("name", ticker)
-    group      = wl_entry.get("group", "🇺🇸 US Stocks")
+    group      = wl_entry.get("group", "US Stocks")
     asset_class = wl_entry.get("asset_class")
 
     # Infer asset_class from group if not stored on the entry
@@ -3322,7 +3432,7 @@ def _render_dd_search_result(target: str):
     a1, a2, a3 = st.columns([2, 2, 1])
     with a1:
         if in_holdings:
-            st.success("✓ Already in holdings")
+            st.success("Already in holdings")
         else:
             if st.button(f"Add to Holdings", key="dd_add_holdings",
                          use_container_width=True, type="primary"):
@@ -3333,7 +3443,7 @@ def _render_dd_search_result(target: str):
                 st.rerun()
     with a2:
         if in_watchlist:
-            st.success("✓ Already on watchlist")
+            st.success("Already on watchlist")
         else:
             if st.button(f"Add to Watchlist", key="dd_add_watchlist",
                          use_container_width=True):
@@ -3412,14 +3522,14 @@ def page_deepdive():
                                    else "Stock" if qt == "EQUITY"
                                    else qt.title() or "Unknown")
                     if ticker.endswith(".L"):
-                        group = "🇬🇧 UK Stocks"
+                        group = "UK Stocks"
                     elif ticker.endswith((".DE", ".PA", ".AS", ".MC", ".MI",
                                          ".SW", ".ST", ".CO", ".HE", ".OL")):
-                        group = "🇪🇺 EU Stocks"
+                        group = "EU Stocks"
                     elif asset_class == "ETF":
-                        group = "📦 ETFs & Index Funds"
+                        group = "ETFs & Index Funds"
                     else:
-                        group = "🇺🇸 US Stocks"
+                        group = "US Stocks"
                     div_raw   = _f(info.get("dividendYield"))
                     div_yield = None
                     if div_raw is not None:
@@ -3596,7 +3706,7 @@ def page_compare():
         row("Fund cost (TER)",   _ter_fmt),
         row("Fund size (AUM)",   lambda i: _fmt_aum(_f(i.get("aum")))),
         row("Sector",            lambda i: i.get("sector", "—")),
-        row("Quality gate",      lambda i: "✅ Pass" if i.get("quality_passes") else ("❌ Fail" if i.get("asset_class")=="Stock" else "N/A")),
+        row("Quality gate",      lambda i: "Pass" if i.get("quality_passes") else ("Fail" if i.get("asset_class")=="Stock" else "N/A")),
         row("Value score",       lambda i: f"{_f(i.get('score')):.0f}/100" if _f(i.get("score")) is not None else "—"),
     ]
 
@@ -3611,7 +3721,7 @@ def _severity_colour(sev: str) -> str:
     return {"high": "#777777", "medium": "#444444", "low": "#1A1A1A", "info": "#1A3A5C"}.get(sev, "#777777")
 
 def _severity_icon(sev: str) -> str:
-    return {"high": "🔴", "medium": "🟡", "low": "🟢", "info": "🔵"}.get(sev, "⚪")
+    return {"high": _SVG["dot-high"], "medium": _SVG["dot-medium"], "low": _SVG["dot-low"], "info": _SVG["dot-info"]}.get(sev, _SVG["dot-info"])
 
 def _type_label(t: str) -> str:
     return {
@@ -3644,7 +3754,7 @@ def page_briefing():
 
     col_title, col_btn = st.columns([3, 1])
     with col_btn:
-        if st.button("📰  Generate Briefing", type="primary", use_container_width=True,
+        if st.button("Generate Briefing", type="primary", use_container_width=True,
                      key="gen_briefing_btn"):
             with st.spinner("Running full surveillance and generating briefing…"):
                 try:
@@ -3660,11 +3770,11 @@ def page_briefing():
             st.caption("No briefing generated yet.")
         st.info("""
         **Your morning briefing will appear here** — a plain-English market summary covering:
-        - 📊 Macro backdrop (rates, yield curve, VIX, credit spreads)
-        - ⭐ Top value opportunities from your screener
-        - 👁️ Your watchlist at a glance
-        - 📰 Market-moving headlines
-        - 🚨 Alerts requiring attention
+        - Macro backdrop (rates, yield curve, VIX, credit spreads)
+        - Top value opportunities from your screener
+        - Your watchlist at a glance
+        - Market-moving headlines
+        - Alerts requiring attention
 
         Click **Generate Briefing** to run the surveillance engine.
         """)
@@ -3690,7 +3800,7 @@ def page_briefing():
     tone_colours = {"constructive": "#1A1A1A", "mixed": "#444444", "cautious": "#777777"}
     tone_col = tone_colours.get(tone, "#777777")
 
-    with st.expander(f"📊 Macro — {tone.title()} backdrop", expanded=True):
+    with st.expander(f"Macro — {tone.title()} backdrop", expanded=True):
         st.markdown(
             f'<div style="color:{tone_col};margin-bottom:8px">{macro.get("tone_detail","")}</div>',
             unsafe_allow_html=True,
@@ -3708,7 +3818,7 @@ def page_briefing():
     signal_summary = briefing.get("signal_summary", {})
     high_sigs = [s for s in briefing.get("signals", []) if s.get("severity") == "high"]
     if high_sigs:
-        with st.expander(f"🚨 High-priority alerts ({len(high_sigs)})", expanded=True):
+        with st.expander(f"High-priority alerts ({len(high_sigs)})", expanded=True):
             for sig in high_sigs:
                 col = _severity_colour(sig.get("severity", "high"))
                 st.markdown(
@@ -3724,7 +3834,7 @@ def page_briefing():
     # ── Top opportunities ──────────────────────────────────────────────────────
     opportunities = briefing.get("opportunities", [])
     if opportunities:
-        with st.expander(f"⭐ Top value picks ({len(opportunities)})", expanded=True):
+        with st.expander(f"Top value picks ({len(opportunities)})", expanded=True):
             pairs = [opportunities[i:i+2] for i in range(0, len(opportunities), 2)]
             for pair in pairs:
                 cols = st.columns(2)
@@ -3756,7 +3866,7 @@ def page_briefing():
     # ── Watchlist ──────────────────────────────────────────────────────────────
     wl_data = briefing.get("watchlist", [])
     if wl_data:
-        with st.expander(f"👁️ Your watchlist ({len(wl_data)} items)", expanded=False):
+        with st.expander(f"Your watchlist ({len(wl_data)} items)", expanded=False):
             for item in wl_data:
                 score_val = _f(item.get("score"))
                 score_col = "#1A1A1A" if score_val and score_val >= 45 else "#777777"
@@ -3779,7 +3889,7 @@ def page_briefing():
     # ── News highlights ────────────────────────────────────────────────────────
     news_items = briefing.get("news_highlights", [])
     if news_items:
-        with st.expander(f"📰 Market headlines ({len(news_items)})", expanded=False):
+        with st.expander(f"Market headlines ({len(news_items)})", expanded=False):
             for item in news_items:
                 sent = item.get("sentiment", 0)
                 col  = "#1A1A1A" if sent > 0.2 else "#777777" if sent < -0.2 else "#777777"
@@ -3849,7 +3959,7 @@ def page_settings():
     # ═══════════════════════════════════════════════════════════════════════
     # SECTION 1: STOCK QUALITY GATE
     # ═══════════════════════════════════════════════════════════════════════
-    with st.expander("🔬 Stock Quality Gate — who gets scored", expanded=True):
+    with st.expander("Stock Quality Gate — who gets scored", expanded=True):
         st.markdown(
             "Stocks **must pass all of these** to receive a valuation score. "
             "A cheap stock in a poor business is not a value investment — "
@@ -3903,7 +4013,7 @@ def page_settings():
     # ═══════════════════════════════════════════════════════════════════════
     # SECTION 2: STOCK VALUATION WEIGHTS
     # ═══════════════════════════════════════════════════════════════════════
-    with st.expander("📊 Stock Valuation — what matters most", expanded=True):
+    with st.expander("Stock Valuation — what matters most", expanded=True):
         st.markdown(
             "These five factors combine to produce the valuation score for stocks that "
             "pass the quality gate. Adjust the **relative importance** of each — "
@@ -3952,7 +4062,12 @@ def page_settings():
         _weight_bar(wvals, wlabls)
         total_w = sum(wvals)
         if total_w == 0:
-            st.warning("⚠ All weights are zero — stocks cannot be scored.")
+            st.markdown(
+                '<div style="background:#FFFFFF;border:1px solid #D4D4D2;border-left:3px solid #777777;'
+                'padding:8px 12px;font-family:var(--vs-sans),sans-serif;font-size:12px;color:#444444;">'
+                'All weights are zero — stocks cannot be scored.</div>',
+                unsafe_allow_html=True,
+            )
         else:
             # Show effective percentages
             pcts = "  ·  ".join(
@@ -3973,7 +4088,7 @@ def page_settings():
     # ═══════════════════════════════════════════════════════════════════════
     # SECTION 3: ETF WEIGHTS
     # ═══════════════════════════════════════════════════════════════════════
-    with st.expander("📦 ETF & Index Fund scoring weights", expanded=False):
+    with st.expander("ETF & Index Fund scoring weights", expanded=False):
         st.markdown(
             "ETFs are scored on four factors. The defaults prioritise fund size and low cost "
             "equally — adjust if you care more about recent performance or momentum."
@@ -4027,7 +4142,7 @@ def page_settings():
     # ═══════════════════════════════════════════════════════════════════════
     # SECTION 4: MONEY MARKET WEIGHTS
     # ═══════════════════════════════════════════════════════════════════════
-    with st.expander("💰 Money Market & Short Duration weights", expanded=False):
+    with st.expander("Money Market & Short Duration weights", expanded=False):
         st.markdown(
             "Money market funds are primarily about income — yield dominates. "
             "Adjust if safety (fund size) or cost (TER) matters more to you."
@@ -4080,7 +4195,7 @@ def page_settings():
     with apply_col:
         apply_disabled = not (st.session_state.instruments)
         if st.button(
-            "✅  Apply & Rescore",
+            "Apply & Rescore",
             type="primary",
             use_container_width=True,
             disabled=apply_disabled,
@@ -4107,7 +4222,7 @@ def page_settings():
             st.rerun()
 
     with reset_col:
-        if st.button("↩  Reset to defaults", use_container_width=True):
+        if st.button("Reset to defaults", use_container_width=True):
             defaults = {
                 "min_roe": 10, "max_de": 2, "min_profit_margin": 2, "require_pos_fcf": True,
                 "wt_pe": 30, "wt_pb": 20, "wt_evebitda": 20, "wt_divyield": 15, "wt_52w": 15,
@@ -4122,16 +4237,39 @@ def page_settings():
             st.rerun()
 
     if apply_disabled:
-        st.info("👈  Load data from the sidebar first, then click Apply & Rescore.")
+        st.markdown(
+            '<div style="background:#FFFFFF;border:1px solid #D4D4D2;border-left:3px solid #1A3A5C;'
+            'padding:10px 14px;font-family:var(--vs-sans),sans-serif;font-size:13px;color:#444444;">'
+            'Load data from the Markets &amp; Data section above, then click Apply &amp; Rescore.</div>',
+            unsafe_allow_html=True,
+        )
     elif st.session_state.scoring_changed:
-        st.warning("⚠ Settings changed — click **Apply & Rescore** to update scores.")
+        st.markdown(
+            '<div style="background:#FFFFFF;border:1px solid #D4D4D2;border-left:3px solid #777777;'
+            'padding:8px 12px;font-family:var(--vs-sans),sans-serif;font-size:12px;color:#444444;">'
+            'Settings changed — click <strong>Apply &amp; Rescore</strong> to update scores.</div>',
+            unsafe_allow_html=True,
+        )
     else:
-        st.success("✓ Scores are up to date with current settings.")
+        st.markdown(
+            '<div style="background:#FFFFFF;border:1px solid #D4D4D2;border-left:3px solid #1A3A5C;'
+            'padding:8px 12px;font-family:var(--vs-sans),sans-serif;font-size:12px;color:#444444;">'
+            'Scores are up to date with current settings.</div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
+
+# ── Read query_params for nav (set by topnav JS) ──────────────────────────
+_qp = st.query_params.get("p", "")
+_valid_pages = {"home", "screener", "deepdive", "compare", "briefing", "settings"}
+if _qp in _valid_pages and _qp != st.session_state.page:
+    st.session_state.page = _qp
+    st.query_params.clear()
+    st.rerun()
 
 page = st.session_state.page
 if   page == "home":      page_home()
