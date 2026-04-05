@@ -184,6 +184,74 @@ def _fetch_fundamentals(ticker, name, asset_class, group, force=False):
         "cached_at":      datetime.now(timezone.utc).isoformat(),
         "cache_layer":    "fundamentals",
     }
+
+    # -- Phase 3: historical cashflow + financials (optional — never blocks fetch) --
+    # Provides: buyback_1y, capex_1y for capital allocation
+    #           net_income_avg_3y for normalised earnings flag
+    if result.get("ok") and asset_class == "Stock":
+        try:
+            import pandas as _pd
+            yf_t = yf.Ticker(ticker)
+
+            # ── Cashflow: buybacks + capex ────────────────────────────────
+            cf = yf_t.cashflow
+            if cf is not None and not cf.empty:
+                # Columns are dates; take up to 4 most recent years
+                cols = sorted(cf.columns, reverse=True)[:4]
+
+                def _cf_row(df, *names):
+                    """Return list of non-NaN values from first matching row."""
+                    for nm in names:
+                        if nm in df.index:
+                            return [
+                                abs(float(df.loc[nm, c]))
+                                for c in cols
+                                if _pd.notna(df.loc[nm, c])
+                            ]
+                    return []
+
+                buybacks = _cf_row(cf,
+                    "Repurchase Of Capital Stock",
+                    "RepurchaseOfCapitalStock",
+                    "Common Stock Repurchased",
+                )
+                capex_raw = _cf_row(cf,
+                    "Capital Expenditure",
+                    "CapitalExpenditure",
+                    "Purchase Of Property Plant And Equipment",
+                )
+
+                result["buyback_1y"]   = buybacks[0]  if buybacks  else None
+                result["capex_1y"]     = capex_raw[0] if capex_raw else None
+                # 3-year average capex for intensity ratio
+                result["capex_avg_3y"] = (
+                    sum(capex_raw[:3]) / len(capex_raw[:3]) if capex_raw else None
+                )
+
+            # ── Annual financials: historical net income ──────────────────
+            fin = yf_t.financials
+            if fin is not None and not fin.empty:
+                fcols = sorted(fin.columns, reverse=True)[:4]
+
+                def _fin_row(df, *names):
+                    return [
+                        float(df.loc[nm, c])
+                        for nm in names if nm in df.index
+                        for c in fcols
+                        if _pd.notna(df.loc[nm, c])
+                    ][:4]
+
+                ni_hist = _fin_row(fin, "Net Income", "NetIncome")
+                # Average of up to 3 most recent years (require at least 2)
+                result["net_income_hist"]   = ni_hist
+                result["net_income_avg_3y"] = (
+                    sum(ni_hist[:3]) / len(ni_hist[:3])
+                    if len(ni_hist) >= 2 else None
+                )
+
+        except Exception:
+            pass  # Phase 3 data is supplementary — never surface errors to user
+
     _db.set_fundamentals(ticker, result)
     return result
 

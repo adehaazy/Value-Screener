@@ -228,6 +228,87 @@ def _earnings_quality_composite(inst: dict) -> tuple:
     return round(eq_score, 1), nudge
 
 
+
+def _normalised_earnings_flag(inst: dict) -> dict | None:
+    """
+    Returns a risk_flag dict if trailing earnings are significantly above
+    the 3-year historical average — a sign of above-cycle peak earnings.
+    Only fires when net_income_avg_3y is available (Phase 3 fetch).
+    Returns None if data is insufficient or earnings are not elevated.
+    """
+    ni_avg   = _f(inst.get("net_income_avg_3y"))
+    ni_trail = _f(inst.get("net_income"))
+    mkt_cap  = _f(inst.get("market_cap"))
+
+    if not ni_avg or not ni_trail or not mkt_cap:
+        return None
+    if ni_avg <= 0 or ni_trail <= 0 or mkt_cap <= 0:
+        return None
+
+    # Only flag when trailing earnings are >25% above 3-year average
+    if ni_trail <= ni_avg * 1.25:
+        return None
+
+    pct_above  = (ni_trail / ni_avg - 1) * 100
+    norm_pe    = round(mkt_cap / ni_avg,   1)
+    trail_pe   = round(mkt_cap / ni_trail, 1)
+    return {
+        "type":   "cycle",
+        "label":  f"↑ Above-cycle earnings (+{pct_above:.0f}%)",
+        "detail": (
+            f"Trailing earnings are {pct_above:.0f}% above their 3-year average. "
+            f"Normalised P/E {norm_pe}x vs trailing {trail_pe}x — "
+            f"valuation may look cheaper than it really is through the cycle."
+        ),
+    }
+
+
+def _capital_allocation_score(inst: dict) -> float | None:
+    """
+    Capital allocation score 0–100.  Two components, equally weighted:
+
+    1. Total shareholder yield  = dividend yield + buyback yield
+       (rewards companies returning cash; penalises hoarders)
+       ≥ 6% → 90 | 4–6% → 75 | 2–4% → 55 | 1–2% → 40 | < 1% → 20
+
+    2. Capex intensity  = capex / revenue
+       (moderate reinvestment is healthy; extremes in either direction score lower)
+       3–15% → 70 | ≤ 1% → 40 | 15–25% → 55 | > 25% → 30
+
+    Returns None if neither component can be computed.
+    """
+    mkt_cap    = _f(inst.get("market_cap"))
+    revenue    = _f(inst.get("revenue"))
+    div_yield  = _f(inst.get("div_yield"))   # stored as % e.g. 3.0 = 3 %
+    buyback_1y = _f(inst.get("buyback_1y"))
+    capex_1y   = _f(inst.get("capex_1y"))
+
+    components = []
+
+    # ── Shareholder yield ─────────────────────────────────────────────
+    if mkt_cap and mkt_cap > 0:
+        buyback_yield = (buyback_1y / mkt_cap * 100) if buyback_1y else 0.0
+        total_yield   = (div_yield or 0.0) + buyback_yield
+        if   total_yield >= 6: components.append(90)
+        elif total_yield >= 4: components.append(75)
+        elif total_yield >= 2: components.append(55)
+        elif total_yield >= 1: components.append(40)
+        else:                  components.append(20)
+
+    # ── Capex intensity ───────────────────────────────────────────────
+    if capex_1y and revenue and revenue > 0:
+        capex_pct = capex_1y / revenue * 100
+        if   capex_pct <= 1:   components.append(40)   # under-investing
+        elif capex_pct <= 15:  components.append(70)   # healthy reinvestment
+        elif capex_pct <= 25:  components.append(55)   # capital heavy, ok
+        else:                  components.append(30)   # very capital intensive
+
+    if not components:
+        return None
+
+    return round(sum(components) / len(components), 1)
+
+
 def _sector_median(sector_medians: dict, sector: str, key: str) -> float | None:
     """Return the median value of `key` for instruments in the same sector."""
     return sector_medians.get(sector, {}).get(key)
@@ -452,9 +533,23 @@ def _score_stock(inst: dict, sector_medians: dict, weights: dict) -> dict:
     if ar is not None and ar > 0.10:
         risk_flags.append({"type": "accruals", "label": f"⚠ Earnings quality ({ar:+.2f})", "detail": f"Accrual ratio {ar:.2f} — paper profits may exceed cash earnings"})
 
+    # Phase 3: normalised earnings flag (risk flag only, no score change)
+    norm_flag = _normalised_earnings_flag(inst)
+    if norm_flag:
+        risk_flags.append(norm_flag)
+
+    # Phase 3: capital allocation score → minor nudge (±3 pts)
+    ca_score = _capital_allocation_score(inst)
+    if ca_score is not None:
+        if   ca_score >= 72: ca_nudge = +3
+        elif ca_score <= 35: ca_nudge = -3
+        else:                ca_nudge =  0
+    else:
+        ca_nudge = 0
+
     # Phase 2: earnings quality composite → score nudge + flag
     eq_score, eq_nudge = _earnings_quality_composite(inst)
-    final_score = _clamp(score + eq_nudge)
+    final_score = _clamp(score + eq_nudge + ca_nudge)
 
     return {
         **inst,
@@ -468,6 +563,8 @@ def _score_stock(inst: dict, sector_medians: dict, weights: dict) -> dict:
         "altman_z":       z,
         "accrual_ratio":  ar,
         "eq_score":       eq_score,          # 0-100 earnings quality composite
+        "ca_score":       ca_score,          # 0-100 capital allocation score
+        "ca_nudge":       ca_nudge,
         "risk_flags":     risk_flags,
     }
 
