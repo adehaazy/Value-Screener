@@ -158,6 +158,50 @@ def oldest_fundamentals_age_days():
         return None
 
 
+# -- One-time D/E normalisation (patch for old 150-style cached values) --------
+
+def normalise_cached_de():
+    """
+    One-time migration: existing fundamentals rows may have debtToEquity stored
+    as a percentage-integer (e.g. 150 for 1.5x) because fetcher.py used to store
+    the raw yfinance value.  This patches every row where the stored value looks
+    like the old format (> 10) and converts it to ratio form (/ 100).
+
+    Safe to run repeatedly — values already in ratio form (≤ 10) are left alone.
+    Returns the number of rows updated.
+    """
+    updated = 0
+    with _lock:
+        c = _get_conn()
+        rows = c.execute("SELECT ticker, data FROM fundamentals").fetchall()
+        for row in rows:
+            try:
+                data = json.loads(row["data"])
+                changed = False
+                for key in ("debt_to_equity", "debt_equity"):
+                    v = data.get(key)
+                    if v is not None:
+                        try:
+                            fv = float(v)
+                            # Only patch values that look like the old % form.
+                            # Real-world D/E ratio almost never exceeds 10x;
+                            # anything above that is assumed to be the old ×100 form.
+                            if fv > 10:
+                                data[key] = round(fv / 100, 4)
+                                changed = True
+                        except (TypeError, ValueError):
+                            pass
+                if changed:
+                    c.execute(
+                        "UPDATE fundamentals SET data = ? WHERE ticker = ?",
+                        (json.dumps(data, default=str), row["ticker"]),
+                    )
+                    updated += 1
+        if updated:
+            c.commit()
+    return updated
+
+
 # -- Migration from legacy JSON files -----------------------------------------
 
 def migrate_from_json(instruments_dir=None, fundamentals_dir=None, prices_dir=None):

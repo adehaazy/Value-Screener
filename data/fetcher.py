@@ -51,6 +51,12 @@ if not _migrated_flag.exists() and not _db.any_data_exists():
     if _n > 0:
         _migrated_flag.touch()
 
+# -- One-time D/E normalisation (patches old ×100 cached values) --
+_de_patched_flag = _BASE / ".de_normalised"
+if not _de_patched_flag.exists():
+    _patched = _db.normalise_cached_de()
+    _de_patched_flag.touch()
+
 
 # -- Market hours (UTC) --
 
@@ -149,8 +155,10 @@ def _fetch_fundamentals(ticker, name, asset_class, group, force=False):
         "description":    (info.get("longBusinessSummary") or "")[:400],
         "ok":             True,
         "roe":            info.get("returnOnEquity"),
-        "debt_to_equity": info.get("debtToEquity"),
-        "debt_equity":    info.get("debtToEquity"),
+        # yfinance returns debtToEquity as a percentage-integer (e.g. 150 = 1.5x D/E ratio).
+        # Normalise to ratio form here so all downstream code works with e.g. 1.5, not 150.
+        "debt_to_equity": (lambda _d: round(float(_d) / 100, 4) if _d is not None else None)(info.get("debtToEquity")),
+        "debt_equity":    (lambda _d: round(float(_d) / 100, 4) if _d is not None else None)(info.get("debtToEquity")),
         "profit_margin":  info.get("profitMargins"),
         "free_cashflow":  fcf,
         "market_cap":     mkt_cap,

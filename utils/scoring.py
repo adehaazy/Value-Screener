@@ -396,19 +396,18 @@ def _passes_quality(inst: dict, qt: dict,
 
         # Phase 1: industry-adjusted debt filter
         # Compare D/E against sector median — flag if >150% of peer median
+        # D/E is stored as a ratio (e.g. 1.5) after normalisation in fetcher.py
         de = _f(inst.get("debt_to_equity") or inst.get("debtToEquity"))
         max_de = qt.get("max_de", 3)
         if de is not None:
             sm_de = _f(sm.get("de"))
             if sm_de and sm_de > 0:
-                de_ratio = de / 100  # yfinance gives e.g. 150 = 1.5x
-                sm_de_ratio = sm_de / 100
-                if de_ratio > sm_de_ratio * 1.5:
+                if de > sm_de * 1.5:
                     failures.append(
-                        f"D/E {de_ratio:.1f}x > 1.5x sector median ({sm_de_ratio:.1f}x)"
+                        f"D/E {de:.1f}x > 1.5x sector median ({sm_de:.1f}x)"
                     )
-            elif de > max_de * 100:   # fallback: absolute cap if no sector data
-                failures.append(f"D/E {de/100:.1f}x > {max_de}x")
+            elif de > max_de:   # fallback: absolute cap if no sector data
+                failures.append(f"D/E {de:.1f}x > {max_de}x")
 
         min_pm = qt.get("min_profit_margin", 2)
         if pm is not None and pm * 100 < min_pm:

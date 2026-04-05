@@ -90,8 +90,8 @@ def stock_verdict(row: dict, sector_medians: dict) -> str:
         val = "Valuation data limited"
 
     # Income / price sentence
-    # div_yield stored as decimal from yfinance (e.g. 0.04 = 4%); convert to % for display/comparison
-    div_pct = div * 100 if div is not None else None
+    # div_yield is stored as a percentage (e.g. 4.0 = 4%) — use directly, no conversion needed
+    div_pct = div
     extras = []
     if div_pct and div_pct >= 3.0:
         extras.append(f"{div_pct:.1f}% dividend yield adds income appeal")
@@ -174,9 +174,9 @@ def money_market_verdict(row: dict) -> str:
     ter   = _f(row.get("ter"))
     aum   = _f(row.get("aum"))
 
-    # Both div_yield and ter are stored as decimals from yfinance (e.g. 0.04 = 4%, 0.002 = 0.2%)
-    # Convert to percent for arithmetic and display
-    yld_pct = yld * 100 if yld is not None else None
+    # div_yield is stored as a percentage (e.g. 4.0 = 4%) — use directly
+    # ter is stored as a decimal from yfinance (e.g. 0.002 = 0.2%) — convert to %
+    yld_pct = yld
     ter_pct = ter * 100 if ter is not None else None
     net_yld = (yld_pct - ter_pct) if (yld_pct is not None and ter_pct is not None) else yld_pct
 
