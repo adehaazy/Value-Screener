@@ -1111,6 +1111,347 @@ header[data-testid="stHeader"] { display: none !important; }
   .vs-hero-greeting { font-size: 22px !important; }
   .vs-hero-stats { grid-template-columns: repeat(2, 1fr) !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK MODE — CSS custom properties & component overrides
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html, html[data-theme="light"] {
+  --bg: #F0F0EE; --surface: #FFFFFF; --ink: #1A1A1A;
+  --ink-mid: #444444; --ink-light: #777777; --rule: #D4D4D2; --accent: #1A3A5C;
+}
+html[data-theme="dark"] {
+  --bg: #0A0A0A; --surface: #1A1A1A; --ink: #E8E8E8;
+  --ink-mid: #B8B8B8; --ink-light: #888888; --rule: #333333; --accent: #5B8AB8;
+  /* remap existing --vs-* variables */
+  --vs-bg: #0A0A0A; --vs-bg-card: #1A1A1A; --vs-bg-subtle: #111111;
+  --vs-bg-raised: #1E1E1E; --vs-ink: #E8E8E8; --vs-ink-mid: #B8B8B8;
+  --vs-ink-soft: #888888; --vs-ink-faint: #555555; --vs-rule: #333333;
+  --vs-rule-soft: #2A2A2A; --vs-accent: #5B8AB8; --vs-accent-dark: #4A7AA0;
+}
+
+/* Dark: global background */
+html[data-theme="dark"] .stApp,
+html[data-theme="dark"] body { background-color: var(--vs-bg) !important; }
+
+/* Dark: surface cards & panels */
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .vs-statbar-cell,
+html[data-theme="dark"] .summary-tile,
+html[data-theme="dark"] .macro-bar,
+html[data-theme="dark"] .changed-banner { background: var(--vs-bg-card) !important; border-color: var(--vs-rule) !important; }
+html[data-theme="dark"] [data-testid="stMetric"] { background: var(--vs-bg-card) !important; border-color: var(--vs-rule) !important; }
+html[data-theme="dark"] [data-testid="stAlert"] { background: var(--vs-bg-card) !important; border-color: var(--vs-rule) !important; color: var(--vs-ink-mid) !important; }
+html[data-theme="dark"] [data-testid="stAlert"] p,
+html[data-theme="dark"] [data-testid="stAlert"] span,
+html[data-theme="dark"] [data-testid="stAlert"] div { color: var(--vs-ink-mid) !important; }
+html[data-theme="dark"] .stExpander { background: var(--vs-bg-card) !important; border-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .stExpander summary { background: var(--vs-bg-subtle) !important; color: var(--vs-ink) !important; }
+html[data-theme="dark"] .stExpander [data-testid="stExpanderDetails"] { background: var(--vs-bg-card) !important; }
+html[data-theme="dark"] .da-section { background: var(--vs-bg-raised) !important; border-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .stDataFrame { border-color: var(--vs-rule) !important; background: var(--vs-bg-card) !important; }
+
+/* Dark: navigation */
+html[data-theme="dark"] .vs-topnav { background: var(--vs-bg-card) !important; border-bottom-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .vs-topnav-wordmark { color: var(--vs-ink) !important; }
+html[data-theme="dark"] .vs-topnav-link { color: var(--vs-ink-mid) !important; }
+html[data-theme="dark"] .vs-topnav-link:hover { color: var(--vs-ink) !important; }
+html[data-theme="dark"] .vs-topnav-link.active { color: var(--vs-accent) !important; border-bottom-color: var(--vs-accent) !important; }
+html[data-theme="dark"] .vs-topnav-settings { color: var(--vs-ink-soft) !important; }
+
+/* Dark: hero */
+html[data-theme="dark"] .vs-hero { background: #0F2540 !important; }
+
+/* Dark: typography */
+html[data-theme="dark"] .card-name,
+html[data-theme="dark"] .card-score-num,
+html[data-theme="dark"] .vs-section-title,
+html[data-theme="dark"] .stApp h1,
+html[data-theme="dark"] .stApp h2,
+html[data-theme="dark"] .stApp h3,
+html[data-theme="dark"] .vs-statbar-val,
+html[data-theme="dark"] .summary-number,
+html[data-theme="dark"] [data-testid="stMetricValue"],
+html[data-theme="dark"] .card-ytd-val { color: var(--vs-ink) !important; }
+
+html[data-theme="dark"] .card-bullet,
+html[data-theme="dark"] .stApp p,
+html[data-theme="dark"] .stApp li,
+html[data-theme="dark"] .card-ytd,
+html[data-theme="dark"] [data-testid="stMetricDelta"] { color: var(--vs-ink-mid) !important; }
+html[data-theme="dark"] .card-ticker-line { color: var(--vs-ink) !important; }
+html[data-theme="dark"] .card-ticker-line .price { color: var(--vs-ink-mid) !important; }
+
+html[data-theme="dark"] .card-market-line,
+html[data-theme="dark"] .vs-statbar-lbl,
+html[data-theme="dark"] .card-score-lbl,
+html[data-theme="dark"] .summary-label,
+html[data-theme="dark"] [data-testid="stMetricLabel"] { color: var(--vs-ink-soft) !important; }
+
+/* Dark: borders */
+html[data-theme="dark"] .vs-section-header-row { border-bottom-color: var(--vs-ink) !important; }
+html[data-theme="dark"] .vs-section-rule { background: var(--vs-rule) !important; }
+html[data-theme="dark"] .card-footer { border-top-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .vs-statbar { border-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .vs-statbar-cell { border-right-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .stApp hr { border-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .breakdown-row { border-bottom-color: var(--vs-rule) !important; color: var(--vs-ink-mid) !important; }
+html[data-theme="dark"] .da-component-row { border-bottom-color: var(--vs-rule) !important; color: var(--vs-ink-mid) !important; }
+
+/* Dark: accent elements */
+html[data-theme="dark"] .card-score-block { border-left-color: var(--vs-accent) !important; }
+html[data-theme="dark"] .card-score-block.low { border-left-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .card-bullet-icon { border-color: var(--vs-accent) !important; color: var(--vs-accent) !important; }
+html[data-theme="dark"] .card-tag { color: var(--vs-accent) !important; border-color: var(--vs-accent) !important; }
+html[data-theme="dark"] .signal-badge { color: var(--vs-accent) !important; border-color: var(--vs-accent) !important; }
+html[data-theme="dark"] .da-rating { color: var(--vs-accent) !important; border-color: var(--vs-accent) !important; }
+html[data-theme="dark"] .da-driver-tag { color: var(--vs-accent) !important; border-color: var(--vs-accent) !important; }
+html[data-theme="dark"] .da-section-title { color: var(--vs-accent) !important; }
+html[data-theme="dark"] .vs-section-link { color: var(--vs-accent) !important; }
+html[data-theme="dark"] .breakdown-bar-fill,
+html[data-theme="dark"] .da-bar-fill { background: var(--vs-accent) !important; }
+html[data-theme="dark"] .breakdown-bar-bg,
+html[data-theme="dark"] .da-bar-bg { background: var(--vs-bg-raised) !important; }
+
+/* Dark: inputs */
+html[data-theme="dark"] .stTextInput input,
+html[data-theme="dark"] .stTextArea textarea { background: var(--vs-bg-card) !important; border-color: var(--vs-rule) !important; color: var(--vs-ink) !important; }
+html[data-theme="dark"] .stSelectbox [data-baseweb="select"] > div,
+html[data-theme="dark"] .stMultiSelect [data-baseweb="select"] > div { background: var(--vs-bg-card) !important; border-color: var(--vs-rule) !important; color: var(--vs-ink) !important; }
+html[data-theme="dark"] .metric-pill { background: var(--vs-bg-card) !important; border-color: var(--vs-rule) !important; color: var(--vs-ink-mid) !important; }
+html[data-theme="dark"] .metric-pill b { color: var(--vs-ink) !important; }
+html[data-theme="dark"] .quality-fail { color: var(--vs-ink-soft) !important; border-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .risk-flag { color: var(--vs-ink-mid) !important; border-color: var(--vs-rule) !important; }
+
+/* Dark: buttons */
+html[data-theme="dark"] .stButton button[kind="primary"] { background: var(--vs-accent) !important; }
+html[data-theme="dark"] .stButton button[kind="secondary"],
+html[data-theme="dark"] .stButton button:not([kind]) { border-color: var(--vs-accent) !important; color: var(--vs-accent) !important; }
+
+/* Dark: tabs */
+html[data-theme="dark"] .stTabs [data-baseweb="tab-list"] { border-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .stTabs [data-baseweb="tab"] { color: var(--vs-ink-mid) !important; }
+html[data-theme="dark"] .stTabs [aria-selected="true"] { color: var(--vs-accent) !important; border-bottom-color: var(--vs-accent) !important; }
+
+/* Dark: misc */
+html[data-theme="dark"] .da-just { color: var(--vs-ink-mid) !important; border-top-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .da-risk-tag { color: var(--vs-ink-soft) !important; border-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .da-score-big { color: var(--vs-ink) !important; }
+html[data-theme="dark"] .da-confidence { color: var(--vs-ink-soft) !important; }
+html[data-theme="dark"] .macro-item-val { color: var(--vs-ink) !important; }
+html[data-theme="dark"] .macro-item-lbl { color: var(--vs-ink-soft) !important; }
+html[data-theme="dark"] .changed-banner { color: var(--vs-ink-mid) !important; }
+html[data-theme="dark"] .changed-banner b { color: var(--vs-ink) !important; }
+html[data-theme="dark"] .stProgress > div { background: var(--vs-bg-raised) !important; }
+html[data-theme="dark"] .stProgress > div > div { background: var(--vs-accent) !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HAMBURGER NAVIGATION — mobile drawer (< 1024px)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Theme toggle button — desktop only */
+.vs-theme-toggle-btn {
+  display: none;
+  background: none;
+  border: 1px solid var(--vs-rule, #D4D4D2);
+  cursor: pointer;
+  padding: 4px 9px;
+  color: var(--vs-ink-soft, #777777);
+  align-items: center;
+  gap: 5px;
+  margin-left: 12px;
+  flex-shrink: 0;
+  font-family: var(--vs-sans);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: all 150ms ease;
+  border-radius: 0;
+}
+.vs-theme-toggle-btn:hover { border-color: var(--vs-accent, #1A3A5C); color: var(--vs-accent, #1A3A5C); }
+html[data-theme="dark"] .vs-theme-toggle-btn { border-color: var(--vs-rule); color: var(--vs-ink-soft); }
+html[data-theme="dark"] .vs-theme-toggle-btn:hover { border-color: var(--vs-accent); color: var(--vs-accent); }
+@media (min-width: 1024px) { .vs-theme-toggle-btn { display: flex; } }
+
+/* Hamburger button */
+.vs-hamburger {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 4px;
+  color: var(--vs-ink, #1A1A1A);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+}
+html[data-theme="dark"] .vs-hamburger { color: var(--vs-ink); }
+@media (max-width: 1023px) {
+  .vs-hamburger { display: flex; }
+  .vs-topnav-links { display: none !important; }
+  .vs-topnav-settings { display: none !important; }
+  .vs-topnav {
+    padding: 0 16px !important;
+    margin-left: -16px !important;
+    margin-right: -16px !important;
+    width: calc(100% + 32px) !important;
+    height: 48px !important;
+  }
+  .vs-topnav-wordmark { font-size: 16px !important; }
+}
+
+/* Mobile nav drawer */
+.vs-mobile-drawer {
+  position: fixed;
+  top: 0;
+  right: -290px;
+  width: 280px;
+  height: 100vh;
+  background: var(--vs-bg-card, #FFFFFF);
+  border-left: 1px solid var(--vs-rule, #D4D4D2);
+  box-shadow: -4px 0 16px rgba(0,0,0,0.15);
+  z-index: 10000;
+  transition: right 250ms ease-out;
+  overflow-y: auto;
+  padding: 24px 20px;
+  box-sizing: border-box;
+}
+.vs-mobile-drawer.open { right: 0; }
+
+.vs-drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--vs-rule, #D4D4D2);
+}
+.vs-drawer-wordmark {
+  font-family: var(--vs-serif, 'Playfair Display', Georgia, serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--vs-ink, #1A1A1A);
+  letter-spacing: -0.3px;
+}
+.vs-drawer-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--vs-ink-soft, #777777);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+}
+.vs-drawer-navlink {
+  display: flex;
+  align-items: center;
+  font-family: var(--vs-sans, 'Inter', sans-serif);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--vs-ink, #1A1A1A);
+  padding: 16px 0 16px 3px;
+  border-bottom: 1px solid var(--vs-rule, #D4D4D2);
+  cursor: pointer;
+  background: none;
+  border-left: 3px solid transparent;
+  transition: all 150ms ease;
+}
+.vs-drawer-navlink:last-of-type { border-bottom: none; }
+.vs-drawer-navlink.active {
+  color: var(--vs-accent, #1A3A5C);
+  border-left-color: var(--vs-accent, #1A3A5C);
+  padding-left: 12px;
+}
+.vs-drawer-section-title {
+  font-family: var(--vs-sans, 'Inter', sans-serif);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--vs-ink-soft, #777777);
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+.vs-drawer-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.vs-drawer-btn {
+  font-family: var(--vs-sans, 'Inter', sans-serif);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vs-ink-mid, #444444);
+  background: transparent;
+  border: 1px solid var(--vs-rule, #D4D4D2);
+  padding: 6px 14px;
+  cursor: pointer;
+  border-radius: 0;
+  transition: all 150ms ease;
+}
+.vs-drawer-btn.active {
+  background: var(--vs-accent, #1A3A5C);
+  border-color: var(--vs-accent, #1A3A5C);
+  color: #FFFFFF;
+}
+
+/* Dark: drawer */
+html[data-theme="dark"] .vs-mobile-drawer { background: var(--vs-bg-card) !important; border-left-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .vs-drawer-header { border-bottom-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .vs-drawer-wordmark { color: var(--vs-ink) !important; }
+html[data-theme="dark"] .vs-drawer-close { color: var(--vs-ink-soft) !important; }
+html[data-theme="dark"] .vs-drawer-navlink { color: var(--vs-ink) !important; border-bottom-color: var(--vs-rule) !important; }
+html[data-theme="dark"] .vs-drawer-navlink.active { color: var(--vs-accent) !important; border-left-color: var(--vs-accent) !important; }
+html[data-theme="dark"] .vs-drawer-section-title { color: var(--vs-ink-soft) !important; }
+html[data-theme="dark"] .vs-drawer-btn { color: var(--vs-ink-mid) !important; border-color: var(--vs-rule) !important; }
+
+/* Backdrop */
+.vs-nav-backdrop {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.4);
+  z-index: 9999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 250ms ease-out;
+}
+.vs-nav-backdrop.visible { opacity: 1; pointer-events: auto; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DENSITY CONTROL & CARD HOVER INTERACTIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Density: compact */
+[data-density="compact"] .card { padding: 16px !important; gap: 10px !important; }
+[data-density="compact"] .vs-hero-stat { padding: 14px 18px !important; }
+[data-density="compact"] .vs-statbar-cell { padding: 12px 16px !important; }
+[data-density="compact"] .vs-section-header { padding-top: 20px !important; }
+
+/* Density: spacious */
+[data-density="spacious"] .card { padding: 32px !important; gap: 18px !important; }
+[data-density="spacious"] .vs-hero-stat { padding: 28px 32px !important; }
+[data-density="spacious"] .vs-statbar-cell { padding: 22px 28px !important; }
+[data-density="spacious"] .vs-section-header { padding-top: 44px !important; }
+
+/* Card hover shadow (desktop only) */
+@media (min-width: 1024px) {
+  .card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    z-index: 1;
+    position: relative;
+  }
+  html[data-theme="dark"] .card:hover {
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  }
+}
+
+/* Accessibility: focus rings */
+*:focus-visible { outline: 2px solid var(--vs-accent, #1A3A5C); outline-offset: 2px; }
+*:focus:not(:focus-visible) { outline: none; }
+html[data-theme="dark"] *:focus-visible { outline-color: var(--vs-accent); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1703,12 +2044,33 @@ def _render_topnav():
     settings_dot = '<span class="vs-topnav-settings-dot"> ●</span>' if _scoring_changed else ""
     settings_cls = " active" if current_page == "settings" else ""
 
+    # SVG icons for nav controls
+    _moon_svg = (
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor"'
+        ' stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"'
+        ' style="display:inline-block;vertical-align:-2px">'
+        '<path d="M12 9A6 6 0 0 1 7 3a6 6 0 1 0 5 6z"/>'
+        '</svg>'
+    )
+    _hamburger_svg = (
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+        ' stroke-width="1.5" stroke-linecap="round" style="display:block">'
+        '<path d="M3 12H21M3 6H21M3 18H21"/>'
+        '</svg>'
+    )
+
     nav_html = (
-        f'<div class="vs-topnav">'
+        f'<div class="vs-topnav" data-page="{current_page}">'
         f'<span class="vs-topnav-wordmark">Value Screener</span>'
         f'<div class="vs-topnav-links">{links_html}</div>'
+        f'<div style="display:flex;align-items:center;flex-shrink:0;gap:4px">'
+        f'<button class="vs-theme-toggle-btn" id="vs_theme_toggle"'
+        f' title="Toggle dark mode" aria-label="Toggle dark mode">{_moon_svg}</button>'
         f'<span class="vs-topnav-settings{settings_cls}" id="topnav_settings">'
         f'Settings{settings_dot}</span>'
+        f'<button class="vs-hamburger" id="vs_hamburger"'
+        f' aria-label="Open navigation" aria-expanded="false">{_hamburger_svg}</button>'
+        f'</div>'
         f'</div>'
     )
     st.markdown(nav_html, unsafe_allow_html=True)
@@ -1744,61 +2106,287 @@ def _render_topnav():
         unsafe_allow_html=True,
     )
 
-    # ── JS: wire nav span clicks to the hidden Streamlit buttons ─────────────
+    # ── JS: nav wiring + dark mode + hamburger drawer + density ──────────────
     js = """
     <script>
     (function() {
-        var NAV_KEYS = ['home','deepdive','screener','compare','briefing','settings'];
+      var NAV_KEYS = ['home','deepdive','screener','compare','briefing','settings'];
 
-        function hideNavBtns() {
-            NAV_KEYS.forEach(function(key) {
-                document.querySelectorAll('button').forEach(function(btn) {
-                    if (btn.innerText.trim().toLowerCase() === key) {
-                        var el = btn;
-                        for (var depth = 0; depth < 8; depth++) {
-                            el = el.parentElement;
-                            if (!el) break;
-                            var tid = el.getAttribute('data-testid') || '';
-                            if (tid === 'stHorizontalBlock' || tid === 'column') {
-                                if (tid === 'stHorizontalBlock') {
-                                    el.style.cssText = 'display:none!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;';
-                                }
-                                break;
-                            }
-                        }
-                    }
-                });
-            });
-        }
+      // ─── Helpers ────────────────────────────────────────────────────────────
+      function getCurrentPage() {
+        var nav = document.querySelector('.vs-topnav[data-page]');
+        return nav ? nav.getAttribute('data-page') : 'home';
+      }
 
-        function wireNav() {
-            var pairs = [
-                ['topnav_home',     'home'],
-                ['topnav_deepdive', 'deepdive'],
-                ['topnav_screener', 'screener'],
-                ['topnav_compare',  'compare'],
-                ['topnav_briefing', 'briefing'],
-                ['topnav_settings', 'settings'],
-            ];
-            pairs.forEach(function(p) {
-                var span = document.getElementById(p[0]);
-                if (!span || span._wired) return;
-                span._wired = true;
-                span.style.cursor = 'pointer';
-                span.addEventListener('click', function() {
-                    var btns = document.querySelectorAll('button');
-                    for (var i = 0; i < btns.length; i++) {
-                        if (btns[i].innerText.trim().toLowerCase() === p[1]) {
-                            btns[i].click(); break;
-                        }
-                    }
-                });
-            });
-            hideNavBtns();
+      // ─── Dark mode ──────────────────────────────────────────────────────────
+      function initTheme() {
+        var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var saved = localStorage.getItem('vs-theme');
+        var theme = saved || (prefersDark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+        updateThemeToggleBtn(theme);
+        return theme;
+      }
+
+      function updateThemeToggleBtn(theme) {
+        var btn = document.getElementById('vs_theme_toggle');
+        if (!btn) return;
+        var moonSvg = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M12 9A6 6 0 0 1 7 3a6 6 0 1 0 5 6z"/></svg>';
+        var sunSvg = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><circle cx="8" cy="8" r="3"/><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/><line x1="3.5" y1="3.5" x2="5" y2="5"/><line x1="11" y1="11" x2="12.5" y2="12.5"/><line x1="12.5" y1="3.5" x2="11" y2="5"/><line x1="5" y1="11" x2="3.5" y2="12.5"/></svg>';
+        btn.innerHTML = (theme === 'dark') ? sunSvg : moonSvg;
+        btn.title = (theme === 'dark') ? 'Switch to light mode' : 'Switch to dark mode';
+        btn.setAttribute('aria-label', btn.title);
+      }
+
+      function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('vs-theme', theme);
+        updateThemeToggleBtn(theme);
+        syncDrawerThemeBtns(theme);
+      }
+
+      function toggleTheme() {
+        var current = document.documentElement.getAttribute('data-theme') || 'light';
+        setTheme(current === 'dark' ? 'light' : 'dark');
+      }
+
+      function wireThemeBtn() {
+        var btn = document.getElementById('vs_theme_toggle');
+        if (btn && !btn._vsThemeWired) {
+          btn._vsThemeWired = true;
+          btn.addEventListener('click', toggleTheme);
         }
-        var obs = new MutationObserver(wireNav);
-        obs.observe(document.body, {childList:true, subtree:true});
-        wireNav();
+      }
+
+      if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+          if (!localStorage.getItem('vs-theme')) {
+            setTheme(e.matches ? 'dark' : 'light');
+          }
+        });
+      }
+
+      // ─── Density ────────────────────────────────────────────────────────────
+      function initDensity() {
+        var saved = localStorage.getItem('vs-density') || 'comfortable';
+        document.documentElement.setAttribute('data-density', saved);
+        return saved;
+      }
+
+      function setDensity(density) {
+        document.documentElement.setAttribute('data-density', density);
+        localStorage.setItem('vs-density', density);
+        syncDrawerDensityBtns(density);
+      }
+
+      function syncDrawerDensityBtns(density) {
+        document.querySelectorAll('.vs-drawer-btn[data-density-val]').forEach(function(btn) {
+          btn.classList.toggle('active', btn.getAttribute('data-density-val') === density);
+        });
+      }
+
+      function syncDrawerThemeBtns(theme) {
+        document.querySelectorAll('.vs-drawer-btn[data-theme-val]').forEach(function(btn) {
+          btn.classList.toggle('active', btn.getAttribute('data-theme-val') === theme);
+        });
+      }
+
+      // ─── Mobile drawer ───────────────────────────────────────────────────────
+      function createDrawer() {
+        if (document.getElementById('vs_mobile_drawer')) return;
+
+        var currentPage = getCurrentPage();
+        var currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+        var currentDensity = document.documentElement.getAttribute('data-density') || 'comfortable';
+
+        var pageLinks = [
+          {label: 'Home',     key: 'home'},
+          {label: 'Deepdive', key: 'deepdive'},
+          {label: 'Screen',   key: 'screener'},
+          {label: 'Compare',  key: 'compare'},
+          {label: 'Briefing', key: 'briefing'},
+          {label: 'Settings', key: 'settings'},
+        ];
+
+        var navHtml = pageLinks.map(function(p) {
+          var cls = p.key === currentPage ? ' active' : '';
+          return '<div class="vs-drawer-navlink' + cls + '" data-nav-key="' + p.key + '" role="button" tabindex="0">' + p.label + '</div>';
+        }).join('');
+
+        function densityBtnCls(d) { return ' vs-drawer-btn' + (currentDensity === d ? ' active' : ''); }
+        function themeBtnCls(t)   { return ' vs-drawer-btn' + (currentTheme   === t ? ' active' : ''); }
+
+        var drawer = document.createElement('div');
+        drawer.id = 'vs_mobile_drawer';
+        drawer.className = 'vs-mobile-drawer';
+        drawer.setAttribute('role', 'navigation');
+        drawer.setAttribute('aria-label', 'Site navigation');
+        drawer.innerHTML =
+          '<div class="vs-drawer-header">' +
+            '<span class="vs-drawer-wordmark">Value Screener</span>' +
+            '<button class="vs-drawer-close" id="vs_drawer_close" aria-label="Close menu">' +
+              '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">' +
+              '<path d="M3 3L13 13M13 3L3 13"/></svg>' +
+            '</button>' +
+          '</div>' +
+          navHtml +
+          '<div class="vs-drawer-section-title">Density</div>' +
+          '<div class="vs-drawer-btn-row">' +
+            '<button class="' + densityBtnCls('compact')     + '" data-density-val="compact">Compact</button>' +
+            '<button class="' + densityBtnCls('comfortable') + '" data-density-val="comfortable">Default</button>' +
+            '<button class="' + densityBtnCls('spacious')    + '" data-density-val="spacious">Spacious</button>' +
+          '</div>' +
+          '<div class="vs-drawer-section-title">Theme</div>' +
+          '<div class="vs-drawer-btn-row">' +
+            '<button class="' + themeBtnCls('light') + '" data-theme-val="light">Light</button>' +
+            '<button class="' + themeBtnCls('dark')  + '" data-theme-val="dark">Dark</button>' +
+          '</div>';
+
+        var backdrop = document.createElement('div');
+        backdrop.id = 'vs_nav_backdrop';
+        backdrop.className = 'vs-nav-backdrop';
+
+        document.body.appendChild(backdrop);
+        document.body.appendChild(drawer);
+
+        document.getElementById('vs_drawer_close').addEventListener('click', closeDrawer);
+        backdrop.addEventListener('click', closeDrawer);
+
+        drawer.querySelectorAll('[data-nav-key]').forEach(function(link) {
+          link.addEventListener('click', function() {
+            closeDrawer();
+            triggerNavBtn(link.getAttribute('data-nav-key'));
+          });
+          link.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              closeDrawer();
+              triggerNavBtn(link.getAttribute('data-nav-key'));
+            }
+          });
+        });
+
+        drawer.querySelectorAll('[data-density-val]').forEach(function(btn) {
+          btn.addEventListener('click', function() { setDensity(btn.getAttribute('data-density-val')); });
+        });
+
+        drawer.querySelectorAll('[data-theme-val]').forEach(function(btn) {
+          btn.addEventListener('click', function() { setTheme(btn.getAttribute('data-theme-val')); });
+        });
+
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') closeDrawer();
+        });
+      }
+
+      function openDrawer() {
+        createDrawer();
+        var drawer = document.getElementById('vs_mobile_drawer');
+        var backdrop = document.getElementById('vs_nav_backdrop');
+        if (drawer) drawer.classList.add('open');
+        if (backdrop) backdrop.classList.add('visible');
+        document.body.style.overflow = 'hidden';
+        var hbg = document.getElementById('vs_hamburger');
+        if (hbg) hbg.setAttribute('aria-expanded', 'true');
+      }
+
+      function closeDrawer() {
+        var drawer = document.getElementById('vs_mobile_drawer');
+        var backdrop = document.getElementById('vs_nav_backdrop');
+        if (drawer) drawer.classList.remove('open');
+        if (backdrop) backdrop.classList.remove('visible');
+        document.body.style.overflow = '';
+        var hbg = document.getElementById('vs_hamburger');
+        if (hbg) hbg.setAttribute('aria-expanded', 'false');
+      }
+
+      function wireHamburger() {
+        var btn = document.getElementById('vs_hamburger');
+        if (btn && !btn._vsHamburgerWired) {
+          btn._vsHamburgerWired = true;
+          btn.addEventListener('click', function() {
+            var drawer = document.getElementById('vs_mobile_drawer');
+            if (drawer && drawer.classList.contains('open')) {
+              closeDrawer();
+            } else {
+              openDrawer();
+            }
+          });
+        }
+      }
+
+      // ─── Navigation wiring ──────────────────────────────────────────────────
+      function triggerNavBtn(key) {
+        var labelMap = {
+          'home': 'home', 'deepdive': 'deepdive', 'screener': 'screen',
+          'compare': 'compare', 'briefing': 'briefing', 'settings': 'settings'
+        };
+        var target = labelMap[key] || key;
+        var btns = document.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) {
+          if (btns[i].innerText.trim().toLowerCase() === target) {
+            btns[i].click();
+            break;
+          }
+        }
+      }
+
+      function hideNavBtns() {
+        NAV_KEYS.forEach(function(key) {
+          document.querySelectorAll('button').forEach(function(btn) {
+            var label = btn.innerText.trim().toLowerCase();
+            if (label === key || (key === 'screener' && label === 'screen')) {
+              var el = btn;
+              for (var depth = 0; depth < 8; depth++) {
+                el = el.parentElement;
+                if (!el) break;
+                var tid = el.getAttribute('data-testid') || '';
+                if (tid === 'stHorizontalBlock') {
+                  el.style.cssText = 'display:none!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;';
+                  break;
+                }
+              }
+            }
+          });
+        });
+      }
+
+      function wireNavSpans() {
+        var pairs = [
+          ['topnav_home',     'home'],
+          ['topnav_deepdive', 'deepdive'],
+          ['topnav_screener', 'screener'],
+          ['topnav_compare',  'compare'],
+          ['topnav_briefing', 'briefing'],
+          ['topnav_settings', 'settings'],
+        ];
+        pairs.forEach(function(p) {
+          var span = document.getElementById(p[0]);
+          if (!span || span._wired) return;
+          span._wired = true;
+          span.style.cursor = 'pointer';
+          span.addEventListener('click', function() { triggerNavBtn(p[1]); });
+        });
+        hideNavBtns();
+      }
+
+      // ─── Main init ───────────────────────────────────────────────────────────
+      function vsInit() {
+        initTheme();
+        initDensity();
+        wireThemeBtn();
+        wireHamburger();
+        wireNavSpans();
+        // Recreate drawer on each render (Streamlit re-runs) to reflect current page
+        var existing = document.getElementById('vs_mobile_drawer');
+        if (existing) existing.remove();
+        var existingBd = document.getElementById('vs_nav_backdrop');
+        if (existingBd) existingBd.remove();
+      }
+
+      var obs = new MutationObserver(vsInit);
+      obs.observe(document.body, {childList: true, subtree: true});
+      vsInit();
     })();
     </script>
     """
