@@ -197,6 +197,8 @@ def normalise_cached_de():
                         (json.dumps(data, default=str), row["ticker"]),
                     )
                     updated += 1
+            except Exception:
+                pass
         if updated:
             c.commit()
     return updated
