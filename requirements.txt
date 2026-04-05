@@ -7,3 +7,4 @@ streamlit-autorefresh>=1.0.1
 vaderSentiment>=3.3.2
 fake-useragent>=1.4.0
 requests>=2.31.0
+finnews>=0.0.5

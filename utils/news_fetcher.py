@@ -246,8 +246,10 @@ def _normalise_articles(raw: list, source_label: str) -> list:
 
 def fetch_market_news(force: bool = False) -> list:
     """
-    Fetch broad market news from CNBC top_news, MarketWatch top_stories,
-    and Yahoo Finance news feed. Cached for NEWS_TTL minutes.
+    Fetch broad market news from 8 sources:
+      CNBC, MarketWatch, Yahoo Finance, WSJ, Seeking Alpha,
+      NASDAQ, S&P Global, CNN Finance.
+    Cached for NEWS_TTL minutes.
     Returns combined, deduped list sorted by recency (most recent first).
     """
     cache_key = "market_news"
@@ -258,23 +260,64 @@ def fetch_market_news(force: bool = False) -> list:
 
     articles = []
 
-    # CNBC — top news + investing
-    for topic in ["top_news", "investing"]:
+    # ── Tier 1: existing sources ──────────────────────────────────────────────
+
+    # CNBC — top news + investing + earnings
+    for topic in ["top_news", "investing", "earnings"]:
         raw = _fetch_with_finnews("cnbc", "news_feed", topic=topic)
         articles.extend(_normalise_articles(raw, "CNBC"))
         if raw:
-            time.sleep(0.5)
+            time.sleep(0.4)
 
     # MarketWatch — top stories + real-time headlines
     for method in ["top_stories", "real_time_headlines"]:
         raw = _fetch_with_finnews("market_watch", method)
         articles.extend(_normalise_articles(raw, "MarketWatch"))
         if raw:
-            time.sleep(0.5)
+            time.sleep(0.4)
 
     # Yahoo Finance — general news
     raw = _fetch_with_finnews("yahoo_finance", "news")
     articles.extend(_normalise_articles(raw, "Yahoo Finance"))
+    if raw:
+        time.sleep(0.4)
+
+    # ── Tier 2: new sources ───────────────────────────────────────────────────
+
+    # WSJ — market news + US business (premium, low noise)
+    for method in ["market_news", "us_business_news"]:
+        raw = _fetch_with_finnews("wsj", method)
+        articles.extend(_normalise_articles(raw, "WSJ"))
+        if raw:
+            time.sleep(0.4)
+
+    # Seeking Alpha — Wall Street Breakfast digest + latest articles
+    for method in ["wall_street_breakfast", "latest_articles"]:
+        raw = _fetch_with_finnews("seeking_alpha", method)
+        articles.extend(_normalise_articles(raw, "Seeking Alpha"))
+        if raw:
+            time.sleep(0.4)
+
+    # NASDAQ — markets feed + stocks feed
+    for method in ["markets_feed", "stocks_feed"]:
+        raw = _fetch_with_finnews("nasdaq", method)
+        articles.extend(_normalise_articles(raw, "NASDAQ"))
+        if raw:
+            time.sleep(0.4)
+
+    # S&P Global — market commentary + research (institutional/macro)
+    for method in ["market_commentary", "research"]:
+        raw = _fetch_with_finnews("sp_global", method)
+        articles.extend(_normalise_articles(raw, "S&P Global"))
+        if raw:
+            time.sleep(0.4)
+
+    # CNN Finance — top stories + markets
+    for method in ["top_stories", "markets"]:
+        raw = _fetch_with_finnews("cnn_finance", method)
+        articles.extend(_normalise_articles(raw, "CNN Finance"))
+        if raw:
+            time.sleep(0.4)
 
     # Dedupe by URL
     seen_urls = set()
@@ -300,8 +343,12 @@ def fetch_market_news(force: bool = False) -> list:
 
 def fetch_news_for_ticker(ticker: str, name: str = "", force: bool = False) -> list:
     """
-    Fetch news specific to a single ticker using Yahoo Finance's per-symbol RSS.
-    ticker: e.g. 'LLOY.L' or 'AAPL'
+    Fetch news specific to a single ticker.
+    Priority order:
+      1. Yahoo Finance per-symbol RSS (fastest, most direct)
+      2. Seeking Alpha per-ticker API (richer editorial analysis)
+      3. NASDAQ ticker feed (exchange-specific)
+      4. Broad market news scan for ticker/name mentions (fallback)
     Returns list of article dicts, cached per-ticker.
     """
     cache_key = f"ticker_{ticker}"
@@ -310,18 +357,40 @@ def fetch_news_for_ticker(ticker: str, name: str = "", force: bool = False) -> l
         if cached:
             return cached["articles"]
 
-    # Yahoo Finance supports per-ticker RSS via the headlines endpoint
-    raw = _fetch_with_finnews("yahoo_finance", "headlines", symbols=[ticker])
-    articles = _normalise_articles(raw, "Yahoo Finance")
+    articles = []
+    seen_urls: set = set()
 
-    # If the Yahoo per-ticker feed gave nothing, try a broader search
-    # by scanning market news for ticker/name mentions
+    def _add(raw, source):
+        for art in _normalise_articles(raw, source):
+            key = art.get("url") or art.get("title", "")
+            if key and key not in seen_urls:
+                seen_urls.add(key)
+                articles.append(art)
+
+    # 1. Yahoo Finance per-ticker RSS
+    raw = _fetch_with_finnews("yahoo_finance", "headlines", symbols=[ticker])
+    _add(raw, "Yahoo Finance")
+    if raw:
+        time.sleep(0.3)
+
+    # 2. Seeking Alpha per-ticker API (editorial depth, especially good for US stocks)
+    # Use the base ticker without exchange suffix (e.g. AAPL, not AAPL.L)
+    base_ticker = ticker.split(".")[0]
+    raw = _fetch_with_finnews("seeking_alpha", "stocks", ticker=base_ticker)
+    _add(raw, "Seeking Alpha")
+    if raw:
+        time.sleep(0.3)
+
+    # 3. NASDAQ ticker feed
+    raw = _fetch_with_finnews("nasdaq", "ticker_feed", ticker_symbol=base_ticker)
+    _add(raw, "NASDAQ")
+
+    # 4. If still nothing, fall back to scanning broad market news for mentions
     if not articles:
         market = fetch_market_news()
         name_index = {}
         if ticker:
-            base = ticker.split(".")[0].lower()
-            name_index[base] = ticker
+            name_index[base_ticker.lower()] = ticker
         if name:
             STOP = {"the", "and", "for", "plc", "ltd", "inc", "corp", "group",
                     "holdings", "international", "limited", "company"}
@@ -418,6 +487,143 @@ def get_news_summary_for_briefing(max_stories: int = 10) -> str:
         if s.get("summary"):
             lines.append(f"   {s['summary'][:120]}...")
     return "\n".join(lines)
+
+
+# ── Sector-targeted news (Phase 4) ────────────────────────────────────────────
+
+# Map of app sector names → Seeking Alpha sector slug
+_SECTOR_SA_SLUG = {
+    "Technology":          "technology",
+    "Financials":          "financial",
+    "Healthcare":          "healthcare",
+    "Consumer Staples":    "consumer-staples",
+    "Consumer Discretionary": "consumer-discretionary",
+    "Industrials":         "industrial",
+    "Energy":              "energy",
+    "Materials":           "basic-materials",
+    "Real Estate":         "real-estate",
+    "Utilities":           "utilities",
+    "Communication Services": "communication-services",
+}
+
+# Map of app sector names → CNBC topic key
+_SECTOR_CNBC_TOPIC = {
+    "Technology":    "technology",
+    "Energy":        "energy",
+    "Healthcare":    "health_care",
+    "Financials":    "finance",
+    "Real Estate":   "real_estate",
+    "Media":         "media",
+    "Retail":        "retail",
+    "Travel":        "travel",
+}
+
+
+def fetch_sector_news(sectors: list, max_per_sector: int = 5, force: bool = False) -> dict:
+    """
+    Fetch news targeted to specific sectors.
+    Returns dict of {sector_name: [article_dicts]}.
+
+    sectors: list of sector name strings (e.g. ['Technology', 'Energy'])
+    Uses Seeking Alpha sector feeds + relevant CNBC topic feeds.
+    Cached per sector with standard TTL.
+    """
+    result = {}
+    for sector in sectors[:4]:  # cap at 4 sectors to avoid overlong fetches
+        cache_key = f"sector_{re.sub(r'[^a-z0-9]', '_', sector.lower())}"
+        if not force:
+            cached = _load_cache(cache_key)
+            if cached:
+                result[sector] = cached["articles"][:max_per_sector]
+                continue
+
+        articles = []
+        seen_urls: set = set()
+
+        def _add(raw, source):
+            for art in _normalise_articles(raw, source):
+                key = art.get("url") or art.get("title", "")
+                if key and key not in seen_urls:
+                    seen_urls.add(key)
+                    articles.append(art)
+
+        # Seeking Alpha sector feed
+        sa_slug = _SECTOR_SA_SLUG.get(sector)
+        if sa_slug:
+            raw = _fetch_with_finnews("seeking_alpha", "sectors", sector=sa_slug)
+            _add(raw, "Seeking Alpha")
+            if raw:
+                time.sleep(0.3)
+
+        # CNBC topic feed (if mapped)
+        cnbc_topic = _SECTOR_CNBC_TOPIC.get(sector)
+        if cnbc_topic:
+            raw = _fetch_with_finnews("cnbc", "news_feed", topic=cnbc_topic)
+            _add(raw, "CNBC")
+
+        articles.sort(key=lambda a: a.get("published", "") or "", reverse=True)
+        _save_cache(cache_key, articles)
+        result[sector] = articles[:max_per_sector]
+
+    return result
+
+
+def get_sector_news_for_briefing(sectors: list, max_per_sector: int = 3) -> str:
+    """
+    Returns a formatted text block of sector-targeted stories for the
+    Morning Briefing AI prompt. Labelled by sector for clear context.
+    """
+    if not sectors:
+        return ""
+
+    sector_news = fetch_sector_news(sectors, max_per_sector=max_per_sector)
+    if not sector_news:
+        return ""
+
+    lines = []
+    for sector, stories in sector_news.items():
+        if not stories:
+            continue
+        lines.append(f"\n{sector.upper()} NEWS:")
+        for s in stories:
+            label = s.get("sentiment_label", "neutral")
+            prefix = "▲" if label == "positive" else ("▼" if label == "negative" else "─")
+            lines.append(f"  {prefix} {s.get('title', '')} [{s.get('source', '')}]")
+    return "\n".join(lines)
+
+
+# ── Market mood (Phase 6) ─────────────────────────────────────────────────────
+
+def get_market_mood(sample_size: int = 30) -> dict:
+    """
+    Derive a market mood label from recent article sentiment scores.
+    Returns dict with:
+      label:   "Broadly positive" / "Mixed" / "Broadly negative" / "Risk-off tone"
+      score:   float avg sentiment in [-1, 1]
+      count:   number of articles sampled
+    """
+    articles = fetch_market_news()[:sample_size]
+    if not articles:
+        return {"label": "No data", "score": 0.0, "count": 0}
+
+    scores = [a.get("sentiment", 0.0) for a in articles if a.get("sentiment") is not None]
+    if not scores:
+        return {"label": "No data", "score": 0.0, "count": 0}
+
+    avg = sum(scores) / len(scores)
+
+    if avg >= 0.10:
+        label = "Broadly positive"
+    elif avg >= 0.02:
+        label = "Cautiously optimistic"
+    elif avg >= -0.02:
+        label = "Mixed signals"
+    elif avg >= -0.10:
+        label = "Cautious tone"
+    else:
+        label = "Risk-off tone"
+
+    return {"label": label, "score": round(avg, 3), "count": len(scores)}
 
 
 # ── Cache management ──────────────────────────────────────────────────────────

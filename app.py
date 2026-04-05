@@ -47,6 +47,8 @@ from utils.signal_enricher import (enrich_with_signals, get_changed_instruments,
 from surveillance.briefing import load_briefing
 from utils.deep_analysis   import (run_deep_analysis, load_cached_analysis,
                                     cache_age_days, build_data_context)
+from utils.news_fetcher    import (get_signals_from_news, get_market_mood,
+                                    get_sector_news_for_briefing, fetch_news_for_ticker)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1562,6 +1564,8 @@ def _init_state():
         st.session_state.auto_refresh = True        # on by default
     if "last_auto_refresh" not in st.session_state:
         st.session_state.last_auto_refresh = None   # ISO timestamp of last auto-refresh
+    if "news_signals_map" not in st.session_state:
+        st.session_state.news_signals_map = {}      # {ticker: {headline, url, sentiment, source}}
 
 
 _init_state()
@@ -2686,6 +2690,30 @@ def _render_macro_bar():
 _render_counter: dict = {}
 
 
+def _get_news_signals_map() -> dict:
+    """
+    Lazily build and cache a {ticker: signal_dict} map for the current session.
+    Pulls from get_signals_from_news() using the loaded instruments as the universe.
+    Returns {} if finnews is unavailable or instruments not yet loaded.
+    """
+    if st.session_state.news_signals_map:
+        return st.session_state.news_signals_map
+    instruments = st.session_state.get("instruments") or []
+    if not instruments:
+        return {}
+    try:
+        signals = get_signals_from_news(instruments, max_signals=50)
+        smap = {}
+        for sig in signals:
+            t = sig.get("ticker")
+            if t and t not in smap:   # keep strongest-sentiment signal per ticker
+                smap[t] = sig
+        st.session_state.news_signals_map = smap
+        return smap
+    except Exception:
+        return {}
+
+
 def render_card(inst: dict, show_add_watchlist=True):
     """Render a full instrument verdict card."""
     ticker  = inst.get("ticker", "unknown")
@@ -2901,6 +2929,35 @@ def render_card(inst: dict, show_add_watchlist=True):
     if score is not None and score >= 75:
         tag_html = '<span class="card-tag">Strong Value</span>'
 
+    # ── News signal tag ───────────────────────────────────────────────────────
+    news_tag_html = ""
+    try:
+        _nsmap = _get_news_signals_map()
+        _nsig  = _nsmap.get(ticker)
+        if _nsig:
+            _sent  = _nsig.get("sentiment", 0)
+            _src   = _nsig.get("source", "")
+            _url   = _nsig.get("url", "")
+            _src_short = {"Yahoo Finance": "YF", "Seeking Alpha": "SA",
+                          "MarketWatch": "MW", "CNBC": "CNBC", "WSJ": "WSJ",
+                          "NASDAQ": "NAS", "S&P Global": "S&P",
+                          "CNN Finance": "CNN"}.get(_src, _src[:4])
+            _direction = "+" if _sent >= 0.05 else "−" if _sent <= -0.05 else ""
+            _tag_label = f"{_direction}&nbsp;{_src_short}" if _direction else _src_short
+            if _url:
+                news_tag_html = (
+                    f'<a href="{_url}" target="_blank" rel="noopener" style="text-decoration:none">'
+                    f'<span class="card-tag" style="border-color:#1A3A5C;color:#1A3A5C;'
+                    f'font-family:\'Inter\',sans-serif">{_tag_label}</span></a>'
+                )
+            else:
+                news_tag_html = (
+                    f'<span class="card-tag" style="border-color:#1A3A5C;color:#1A3A5C;'
+                    f'font-family:\'Inter\',sans-serif">{_tag_label}</span>'
+                )
+    except Exception:
+        pass
+
     # NOTE: no leading spaces — Streamlit/CommonMark treats 4-space-indented lines as code blocks
     card_html = (
         f'<div class="card">'
@@ -2926,6 +2983,7 @@ def render_card(inst: dict, show_add_watchlist=True):
         f'<div class="card-footer">'
         f'{ytd_footer}'
         f'{tag_html}'
+        f'{news_tag_html}'
         f'</div>'
         f'</div>'
     )
@@ -3056,6 +3114,15 @@ def page_home():
     next_str = f"  ·  {next_ev}" if next_ev else ""
     ts_line  = f"{datetime.now().strftime('%A %d %B %Y').upper()}  ·  {age_str}{surv_str}{next_str}"
 
+    # ── Market mood (from news sentiment) ─────────────────────────────────────
+    _mood_str = ""
+    try:
+        _mood = get_market_mood(sample_size=30)
+        if _mood.get("label") and _mood["label"] != "No data":
+            _mood_str = f"  ·  {_mood['label']}"
+    except Exception:
+        pass
+
     # ── Welcome heading ───────────────────────────────────────────────────────
     user = st.session_state.get("user_name", "")
     now_h = datetime.now().hour
@@ -3092,7 +3159,7 @@ def page_home():
     hero_html = (
         f'<div class="vs-hero">'
         f'<div class="vs-hero-greeting">{greeting}</div>'
-        f'<div class="vs-hero-timestamp">{ts_line}</div>'
+        f'<div class="vs-hero-timestamp">{ts_line}{_mood_str}</div>'
         f'<div class="vs-hero-stats">'
         f'<div class="vs-hero-stat"><div class="vs-hero-stat-val">{stat1_val}</div>'
         f'<div class="vs-hero-stat-lbl">Instruments loaded</div></div>'
@@ -4028,6 +4095,80 @@ def _render_instrument_expander(entry: dict, list_key: str, live_data: dict,
                 _save_json(f"{list_key}.json", getattr(st.session_state, list_key))
                 st.session_state.toast = (f"Removed {inst['name']}", "info")
                 st.rerun()
+
+        # ── Recent news & analyst commentary ─────────────────────────────────
+        _section_header("Recent News")
+        try:
+            _ticker_articles = fetch_news_for_ticker(ticker, name=inst.get("name", ""), force=False)
+            if _ticker_articles:
+                # Split: short headlines vs longer Seeking Alpha editorial pieces
+                _editorials = [a for a in _ticker_articles if a.get("source") == "Seeking Alpha"][:3]
+                _headlines  = [a for a in _ticker_articles if a.get("source") != "Seeking Alpha"][:5]
+
+                if _headlines:
+                    st.markdown(
+                        '<div style="font-family:\'Inter\',sans-serif;font-size:10px;font-weight:700;'
+                        'text-transform:uppercase;letter-spacing:0.08em;color:#777777;'
+                        'margin-bottom:6px">Headlines</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _art in _headlines:
+                        _sent  = _art.get("sentiment", 0)
+                        _col   = "#1A1A1A" if _sent > 0.1 else "#777777" if _sent < -0.1 else "#444444"
+                        _icon  = "▲" if _sent > 0.1 else "▼" if _sent < -0.1 else "─"
+                        _link  = _art.get("url", "")
+                        _title = _art.get("title", "")
+                        _src   = _art.get("source", "")
+                        if _link:
+                            st.markdown(
+                                f'<div style="padding:5px 0;border-bottom:1px solid #E8E8E6">'
+                                f'<span style="color:{_col};font-size:0.72rem">{_icon} </span>'
+                                f'<a href="{_link}" target="_blank" style="color:#1A1A1A;'
+                                f'text-decoration:none;font-size:0.87rem">{_title}</a>'
+                                f'<span style="color:#AAAAAA;font-size:0.74rem"> · {_src}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(
+                                f'<div style="padding:5px 0;border-bottom:1px solid #E8E8E6">'
+                                f'<span style="color:{_col};font-size:0.72rem">{_icon} </span>'
+                                f'<span style="color:#1A1A1A;font-size:0.87rem">{_title}</span>'
+                                f'<span style="color:#AAAAAA;font-size:0.74rem"> · {_src}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                if _editorials:
+                    st.markdown(
+                        '<div style="font-family:\'Inter\',sans-serif;font-size:10px;font-weight:700;'
+                        'text-transform:uppercase;letter-spacing:0.08em;color:#777777;'
+                        'margin-top:10px;margin-bottom:6px">Analyst Commentary · Seeking Alpha</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _art in _editorials:
+                        _sent    = _art.get("sentiment", 0)
+                        _link    = _art.get("url", "")
+                        _title   = _art.get("title", "")
+                        _summary = _art.get("summary", "")
+                        _sent_lbl = "Positive" if _sent > 0.05 else "Negative" if _sent < -0.05 else "Neutral"
+                        st.markdown(
+                            f'<div style="background:#FAFAF8;border:1px solid #D4D4D2;'
+                            f'border-left:3px solid #1A3A5C;padding:10px 14px;margin-bottom:6px">'
+                            f'<div style="font-family:\'Inter\',sans-serif;font-size:0.87rem;'
+                            f'font-weight:600;color:#1A1A1A;margin-bottom:3px">'
+                            f'{"<a href=" + repr(_link) + " target=_blank style=color:#1A1A1A;text-decoration:none>" + _title + "</a>" if _link else _title}'
+                            f'</div>'
+                            f'{"<div style=font-family:Inter,sans-serif;font-size:0.8rem;color:#444444;line-height:1.4>" + _summary[:180] + "…</div>" if _summary else ""}'
+                            f'<div style="font-family:\'Inter\',sans-serif;font-size:0.72rem;'
+                            f'color:#777777;margin-top:4px">{_sent_lbl} sentiment</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+            else:
+                st.caption("No recent news found for this instrument.")
+        except Exception:
+            st.caption("News unavailable.")
 
         _render_deep_analysis(inst)
 
