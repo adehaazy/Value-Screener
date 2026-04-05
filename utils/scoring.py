@@ -711,9 +711,9 @@ def _score_money_market(inst: dict, weights: dict) -> dict:
     wt_ter   = weights.get("wt_mm_ter",   15)
 
     def _s_yield(v):
-        # 5%+ yield = 100; 0% = 0
+        # div_yield is stored as % (e.g. 5.0 = 5%). 5%+ → 100; 0% → 0.
         if v is None: return None
-        return _clamp(v / 0.05 * 100)
+        return _clamp(v / 5.0 * 100)
 
     def _s_aum(v):
         if v is None or v <= 0: return None

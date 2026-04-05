@@ -308,7 +308,15 @@ def _fetch_prices(ticker, force=False):
         "fwd_pe":         info.get("forwardPE"),
         "pb":             info.get("priceToBook"),
         "price_to_book":  info.get("priceToBook"),
-        "div_yield":      info.get("dividendYield"),
+        # yfinance returns dividendYield as a decimal fraction (e.g. 0.034 for 3.4%).
+        # Normalise to percentage form (3.4) so all downstream code is consistent.
+        # Guard handles the rare edge-case where yfinance returns it already as a
+        # percentage (> 1.0) — same logic used in the deepdive watchlist search.
+        "div_yield":      (lambda _r: (
+            None if _r is None
+            else round(min(float(_r), 99.0), 4) if float(_r) > 1.0   # already %
+            else round(float(_r) * 100, 4)                            # decimal → %
+        ))(info.get("dividendYield")),
         "low_52w":        low52,
         "high_52w":       high52,
         "pct_from_high": (round((price / high52 - 1) * 100, 1)
