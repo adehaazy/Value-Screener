@@ -572,6 +572,24 @@ header[data-testid="stHeader"] { display: none !important; }
   display: inline-block;
   margin-bottom: 8px;
 }
+.risk-flag {
+  background: transparent;
+  color: #9B6B00;
+  border: 1px solid #E8D0A0;
+  border-radius: 0 !important;
+  padding: 3px 9px;
+  font-family: var(--vs-sans);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: inline-block;
+  margin: 2px 4px 2px 0;
+}
+.risk-flag.distress {
+  color: #8B2020;
+  border-color: #E8C0C0;
+}
 
 /* ── Signal badges on cards ── */
 .signal-badge {
@@ -1695,37 +1713,96 @@ def _render_topnav():
     )
     st.markdown(nav_html, unsafe_allow_html=True)
 
-    # ── JS: wire nav span clicks directly via query_params (no Streamlit buttons) ─
+    # ── Hidden Streamlit buttons (actual nav triggers) ──────────────────────
     st.markdown(
-        '<script>'
-        '(function(){'
-        '  function wireNav(){'
-        '    var pairs=['
-        '      ["topnav_home","home"],'
-        '      ["topnav_deepdive","deepdive"],'
-        '      ["topnav_screener","screener"],'
-        '      ["topnav_compare","compare"],'
-        '      ["topnav_briefing","briefing"],'
-        '      ["topnav_settings","settings"]'
-        '    ];'
-        '    pairs.forEach(function(p){'
-        '      var el=document.getElementById(p[0]);'
-        '      if(!el||el._wired)return;'
-        '      el._wired=true;'
-        '      el.addEventListener("click",function(){'
-        '        var u=new URL(window.location.href);'
-        '        u.searchParams.set("p",p[1]);'
-        '        window.location.href=u.toString();'
-        '      });'
-        '    });'
-        '  }'
-        '  var obs=new MutationObserver(wireNav);'
-        '  obs.observe(document.body,{childList:true,subtree:true});'
-        '  wireNav();'
-        '})();'
-        '</script>',
+        '<style>'
+        '.vs-nav-sentinel + div,'
+        '.vs-nav-sentinel + div > div,'
+        '.vs-nav-sentinel ~ div[data-testid="stHorizontalBlock"],'
+        '.vs-nav-sentinel ~ [data-testid="stHorizontalBlock"] {'
+        '  display:none !important;'
+        '  height:0 !important;'
+        '  overflow:hidden !important;'
+        '  margin:0 !important;'
+        '  padding:0 !important;'
+        '}'
+        '</style>'
+        '<div class="vs-nav-sentinel" style="height:0;overflow:hidden;margin:0;padding:0"></div>',
         unsafe_allow_html=True,
     )
+
+    all_nav = nav_pages + [("Settings", "settings")]
+    btn_cols = st.columns(len(all_nav))
+    for i, (label, key) in enumerate(all_nav):
+        with btn_cols[i]:
+            if st.button(label, key=f"topnav_btn_{key}"):
+                st.session_state.page = key
+                st.rerun()
+
+    st.markdown(
+        '<div class="vs-nav-sentinel-end" style="height:0;overflow:hidden;margin:0;padding:0"></div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── JS: wire nav span clicks to the hidden Streamlit buttons ─────────────
+    js = """
+    <script>
+    (function() {
+        var NAV_KEYS = ['home','deepdive','screener','compare','briefing','settings'];
+
+        function hideNavBtns() {
+            NAV_KEYS.forEach(function(key) {
+                document.querySelectorAll('button').forEach(function(btn) {
+                    if (btn.innerText.trim().toLowerCase() === key) {
+                        var el = btn;
+                        for (var depth = 0; depth < 8; depth++) {
+                            el = el.parentElement;
+                            if (!el) break;
+                            var tid = el.getAttribute('data-testid') || '';
+                            if (tid === 'stHorizontalBlock' || tid === 'column') {
+                                if (tid === 'stHorizontalBlock') {
+                                    el.style.cssText = 'display:none!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;';
+                                }
+                                break;
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        function wireNav() {
+            var pairs = [
+                ['topnav_home',     'home'],
+                ['topnav_deepdive', 'deepdive'],
+                ['topnav_screener', 'screener'],
+                ['topnav_compare',  'compare'],
+                ['topnav_briefing', 'briefing'],
+                ['topnav_settings', 'settings'],
+            ];
+            pairs.forEach(function(p) {
+                var span = document.getElementById(p[0]);
+                if (!span || span._wired) return;
+                span._wired = true;
+                span.style.cursor = 'pointer';
+                span.addEventListener('click', function() {
+                    var btns = document.querySelectorAll('button');
+                    for (var i = 0; i < btns.length; i++) {
+                        if (btns[i].innerText.trim().toLowerCase() === p[1]) {
+                            btns[i].click(); break;
+                        }
+                    }
+                });
+            });
+            hideNavBtns();
+        }
+        var obs = new MutationObserver(wireNav);
+        obs.observe(document.body, {childList:true, subtree:true});
+        wireNav();
+    })();
+    </script>
+    """
+    st.markdown(js, unsafe_allow_html=True)
 
 
 _render_topnav()
@@ -2124,9 +2201,22 @@ def render_card(inst: dict, show_add_watchlist=True):
             pills_html += _pill("AUM", _fmt_aum(aum), cls)
 
     # ── Quality fail badge ────────────────────────────────────────────────────
+    # ── Phase 1: Risk flags ───────────────────────────────────────────────────
+    risk_flags_html = ""
+    risk_flags = inst.get("risk_flags", [])
+    if risk_flags and ac == "Stock":
+        flag_parts = []
+        for rf in risk_flags:
+            cls = "risk-flag distress" if rf.get("type") == "distress" else "risk-flag"
+            detail = rf.get("detail", "").replace('"', "'")
+            flag_parts.append(f'<span class="{cls}" title="{detail}">{rf.get("label","")}</span>')
+        risk_flags_html = "<div>" + "".join(flag_parts) + "</div>"
+
     quality_badge = ""
     if not passes and ac == "Stock":
-        quality_badge = '<div><span class="quality-fail">Does not pass quality filter</span></div>'
+        reasons = inst.get("quality_fail_reasons", [])
+        tip = " · ".join(reasons).replace('"', "'") if reasons else ""
+        quality_badge = f'<div><span class="quality-fail" title="{tip}">Does not pass quality filter</span></div>'
 
     # ── Signal badges ─────────────────────────────────────────────────────────
     badges_html = ""
@@ -2241,6 +2331,7 @@ def render_card(inst: dict, show_add_watchlist=True):
         f'</div>'
         f'</div>'
         f'{quality_badge}'
+        f'{risk_flags_html}'
         f'{badges_html}'
         f'<div class="card-bullets">{bullets_html}</div>'
         f'<div class="card-metrics">{pills_html}</div>'
@@ -4263,14 +4354,6 @@ def page_settings():
 # ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
 
-# ── Read query_params for nav (set by topnav JS) ──────────────────────────
-_qp = st.query_params.get("p", "")
-_valid_pages = {"home", "screener", "deepdive", "compare", "briefing", "settings"}
-if _qp in _valid_pages and _qp != st.session_state.page:
-    st.session_state.page = _qp
-    st.query_params.clear()
-    st.rerun()
-
 page = st.session_state.page
 if   page == "home":      page_home()
 elif page == "screener":  page_screener()
@@ -4285,3 +4368,4 @@ elif page in ("watchlist", "signals"):
 else:
     st.session_state.page = "home"
     st.rerun()
+

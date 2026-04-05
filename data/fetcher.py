@@ -164,6 +164,15 @@ def _fetch_fundamentals(ticker, name, asset_class, group, force=False):
         "earnings_growth":info.get("earningsGrowth"),
         "roa":            info.get("returnOnAssets"),
         "fund_family":    info.get("fundFamily", ""),
+        # -- Phase 1: additional fields for Z-Score, accrual ratio, debt quality --
+        "total_assets":      info.get("totalAssets"),
+        "total_debt":        info.get("totalDebt"),
+        "net_income":        info.get("netIncomeToCommon") or info.get("netIncome"),
+        "operating_cashflow":info.get("operatingCashflow"),
+        "ebit":              info.get("operatingIncome") or info.get("ebitda"),
+        "working_capital":   info.get("workingCapital"),
+        "retained_earnings": info.get("retainedEarnings"),
+        "current_ratio":     info.get("currentRatio"),
         "cached_at":      datetime.now(timezone.utc).isoformat(),
         "cache_layer":    "fundamentals",
     }
@@ -373,3 +382,4 @@ def load_scan_summary():
 def compute_sector_medians(instruments):
     from utils.scoring import compute_sector_medians as _csm
     return _csm(instruments)
+

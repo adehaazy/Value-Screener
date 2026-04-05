@@ -95,6 +95,59 @@ def _is_financial(inst: dict) -> bool:
     return sector in FINANCIAL_SECTORS
 
 
+# ── Phase 1: Risk metric helpers ──────────────────────────────────────────────
+
+def _altman_z_score(inst: dict) -> float | None:
+    """
+    Altman Z-Score for bankruptcy/distress prediction (non-financials only).
+      Z >= 3.0  : Safe zone
+      1.8-3.0   : Grey zone
+      Z <  1.8  : Distress zone — high bankruptcy risk
+    Returns None if insufficient data.
+    """
+    total_assets = _f(inst.get("total_assets") or inst.get("aum"))
+    if not total_assets or total_assets <= 0:
+        return None
+
+    mkt_cap   = _f(inst.get("market_cap"))
+    total_debt = _f(inst.get("total_debt"))
+    revenue   = _f(inst.get("revenue") or inst.get("total_revenue"))
+    ebit      = _f(inst.get("ebit"))
+    wc        = _f(inst.get("working_capital"))
+    re        = _f(inst.get("retained_earnings"))
+
+    # Need at least market cap, debt, and revenue
+    if mkt_cap is None or total_debt is None or revenue is None:
+        return None
+
+    x1 = (wc / total_assets) if wc is not None else 0.0          # Working capital / Assets
+    x2 = (re / total_assets)  if re is not None else 0.0          # Retained earnings / Assets
+    x3 = (ebit / total_assets) if ebit is not None else 0.0       # EBIT / Assets
+    x4 = (mkt_cap / total_debt) if total_debt > 0 else 3.0        # Market cap / Total debt
+    x5 = revenue / total_assets                                     # Revenue / Assets
+
+    return round(1.2*x1 + 1.4*x2 + 3.3*x3 + 0.6*x4 + 1.0*x5, 2)
+
+
+def _accrual_ratio(inst: dict) -> float | None:
+    """
+    Accrual ratio = (Net Income - Operating Cash Flow) / Total Assets.
+    Measures earnings quality — how much profit is 'paper' vs real cash.
+      < 0    : Cash earnings exceed accounting earnings (best)
+      0-0.05 : Normal range
+      > 0.10 : Elevated concern — earnings may be overstated
+    Returns None if insufficient data.
+    """
+    net_income = _f(inst.get("net_income"))
+    op_cf      = _f(inst.get("operating_cashflow"))
+    assets     = _f(inst.get("total_assets") or inst.get("aum"))
+
+    if net_income is None or op_cf is None or not assets or assets <= 0:
+        return None
+
+    return round((net_income - op_cf) / assets, 3)
+
+
 def _sector_median(sector_medians: dict, sector: str, key: str) -> float | None:
     """Return the median value of `key` for instruments in the same sector."""
     return sector_medians.get(sector, {}).get(key)
@@ -144,13 +197,17 @@ def _score_vs_median(
 
 # ── Quality gate ──────────────────────────────────────────────────────────────
 
-def _passes_quality(inst: dict, qt: dict) -> tuple[bool, list[str]]:
+def _passes_quality(inst: dict, qt: dict,
+                    sector_medians: dict | None = None) -> tuple[bool, list[str]]:
     """
     Return (passes, list_of_failure_reasons).
     Applies different criteria for financial vs non-financial stocks.
+    Phase 1: debt threshold is now industry-adjusted (vs sector median D/E).
     """
     failures = []
     is_fin = _is_financial(inst)
+    sector = inst.get("sector", "") or "Unknown"
+    sm     = (sector_medians or {}).get(sector, {})
 
     roe = _f(inst.get("roe"))
     fcf = _f(inst.get("free_cashflow") or inst.get("freeCashflow"))
@@ -176,10 +233,21 @@ def _passes_quality(inst: dict, qt: dict) -> tuple[bool, list[str]]:
         if roe is not None and roe * 100 < min_roe:
             failures.append(f"ROE {roe*100:.1f}% < {min_roe}%")
 
-        max_de = qt.get("max_de", 3)
+        # Phase 1: industry-adjusted debt filter
+        # Compare D/E against sector median — flag if >150% of peer median
         de = _f(inst.get("debt_to_equity") or inst.get("debtToEquity"))
-        if de is not None and de > max_de * 100:  # yfinance returns as %, e.g. 150 = 1.5x
-            failures.append(f"D/E {de/100:.1f}x > {max_de}x")
+        max_de = qt.get("max_de", 3)
+        if de is not None:
+            sm_de = _f(sm.get("de"))
+            if sm_de and sm_de > 0:
+                de_ratio = de / 100  # yfinance gives e.g. 150 = 1.5x
+                sm_de_ratio = sm_de / 100
+                if de_ratio > sm_de_ratio * 1.5:
+                    failures.append(
+                        f"D/E {de_ratio:.1f}x > 1.5x sector median ({sm_de_ratio:.1f}x)"
+                    )
+            elif de > max_de * 100:   # fallback: absolute cap if no sector data
+                failures.append(f"D/E {de/100:.1f}x > {max_de}x")
 
         min_pm = qt.get("min_profit_margin", 2)
         if pm is not None and pm * 100 < min_pm:
@@ -187,6 +255,11 @@ def _passes_quality(inst: dict, qt: dict) -> tuple[bool, list[str]]:
 
         if qt.get("require_pos_fcf", True) and fcf is not None and fcf < 0:
             failures.append("Negative FCF")
+
+        # Phase 1: Altman Z-Score distress screen (non-financials only)
+        z = _altman_z_score(inst)
+        if z is not None and z < 1.8:
+            failures.append(f"Altman Z-Score {z:.1f} (distress zone)")
 
     return (len(failures) == 0), failures
 
@@ -242,12 +315,22 @@ def _score_stock(inst: dict, sector_medians: dict, weights: dict) -> dict:
             used_wt += wt_div
             weighted_sum += div_score * wt_div
 
-    # 52w position: near lows = contrarian opportunity (lower is better)
-    if pos_52w is not None:
-        wk52_score = _clamp((1.0 - pos_52w) * 100)
-        scores["wk52_score"] = wk52_score
+    # Phase 1: 6-12 month momentum (replaces 52w low contrarian signal)
+    # Positive absolute return = buying strength; score >50 = above zero return
+    return_1y = _f(inst.get("return_1y") or inst.get("yr1_pct"))
+    if return_1y is not None:
+        # Normalise: 0% return → 50; +30% → ~100; -30% → ~0
+        # If yr1_pct is stored as a percentage (e.g. 15.0), scale accordingly
+        r = return_1y if abs(return_1y) <= 1.0 else return_1y / 100
+        mom_score = _clamp(50.0 + r * 166.7)
+        scores["momentum_score"] = mom_score
         used_wt += wt_52w
-        weighted_sum += wk52_score * wt_52w
+        weighted_sum += mom_score * wt_52w
+    elif pos_52w is not None:
+        # Fallback: if no return data, keep 52w position as neutral momentum proxy
+        scores["momentum_score"] = 50.0   # neutral, not contrarian
+        used_wt += wt_52w
+        weighted_sum += 50.0 * wt_52w
 
     if used_wt == 0:
         return {**inst, "score": None, "score_components": scores,
@@ -258,6 +341,19 @@ def _score_stock(inst: dict, sector_medians: dict, weights: dict) -> dict:
     coverage = used_wt / total_wt
     score = raw_score * coverage + 50.0 * (1.0 - coverage)
 
+    # Phase 1: compute and attach risk flags (don't affect score, surface in UI)
+    risk_flags = []
+    z = _altman_z_score(inst)
+    if z is not None:
+        if z < 1.8:
+            risk_flags.append({"type": "distress", "label": f"⚠ Distress risk (Z={z:.1f})", "detail": "Altman Z-Score below 1.8 — elevated bankruptcy risk"})
+        elif z < 3.0:
+            risk_flags.append({"type": "grey_zone", "label": f"○ Z-Score grey zone ({z:.1f})", "detail": "Altman Z-Score 1.8–3.0 — monitor closely"})
+
+    ar = _accrual_ratio(inst)
+    if ar is not None and ar > 0.10:
+        risk_flags.append({"type": "accruals", "label": f"⚠ Earnings quality ({ar:+.2f})", "detail": f"Accrual ratio {ar:.2f} — paper profits may exceed cash earnings"})
+
     return {
         **inst,
         "score": round(_clamp(score), 1),
@@ -265,6 +361,9 @@ def _score_stock(inst: dict, sector_medians: dict, weights: dict) -> dict:
         "score_coverage": round(coverage, 2),
         "is_financial": False,
         "p_fcf": p_fcf,
+        "altman_z": z,
+        "accrual_ratio": ar,
+        "risk_flags": risk_flags,
     }
 
 
@@ -315,12 +414,18 @@ def _score_financial(inst: dict, sector_medians: dict, weights: dict) -> dict:
         used_wt += wt_div
         weighted_sum += div_score * wt_div
 
-    # 52w position — contrarian signal
-    if pos_52w is not None:
-        wk52_score = _clamp((1.0 - pos_52w) * 100)
-        scores["wk52_score"] = wk52_score
+    # Phase 1: 6-12 month momentum (replaces 52w low contrarian signal)
+    return_1y = _f(inst.get("return_1y") or inst.get("yr1_pct"))
+    if return_1y is not None:
+        r = return_1y if abs(return_1y) <= 1.0 else return_1y / 100
+        mom_score = _clamp(50.0 + r * 166.7)
+        scores["momentum_score"] = mom_score
         used_wt += wt_52w
-        weighted_sum += wk52_score * wt_52w
+        weighted_sum += mom_score * wt_52w
+    elif pos_52w is not None:
+        scores["momentum_score"] = 50.0
+        used_wt += wt_52w
+        weighted_sum += 50.0 * wt_52w
 
     if used_wt == 0:
         return {**inst, "score": None, "score_components": scores,
@@ -330,12 +435,20 @@ def _score_financial(inst: dict, sector_medians: dict, weights: dict) -> dict:
     coverage  = used_wt / total_wt
     score     = raw_score * coverage + 50.0 * (1.0 - coverage)
 
+    # Phase 1: risk flags for financials (Z-Score not applicable; use accruals)
+    risk_flags = []
+    ar = _accrual_ratio(inst)
+    if ar is not None and ar > 0.10:
+        risk_flags.append({"type": "accruals", "label": f"⚠ Earnings quality ({ar:+.2f})", "detail": f"Accrual ratio {ar:.2f} — paper profits may exceed cash earnings"})
+
     return {
         **inst,
         "score": round(_clamp(score), 1),
         "score_components": scores,
         "score_coverage": round(coverage, 2),
         "is_financial": True,
+        "accrual_ratio": ar,
+        "risk_flags": risk_flags,
     }
 
 
@@ -442,7 +555,7 @@ def score_instrument(
         return _score_money_market(inst, wt)
 
     # Stock path
-    passes, failures = _passes_quality(inst, qt)
+    passes, failures = _passes_quality(inst, qt, sector_medians)
     result = inst.copy()
     result["quality_passes"]       = passes
     result["quality_fail_reasons"] = failures
@@ -486,6 +599,7 @@ def compute_sector_medians(instruments: list[dict]) -> dict:
         ("div_yield",    lambda i: _f(i.get("div_yield") or i.get("dividendYield"))),
         ("roe",          lambda i: _f(i.get("roe"))),
         ("pfcf",         lambda i: _compute_pfcf(i)),
+        ("de",           lambda i: _f(i.get("debt_to_equity") or i.get("debtToEquity"))),
     ]
 
     def _compute_pfcf(inst):
@@ -552,3 +666,4 @@ def score_bg(score) -> str:
     if s >= 50: return "#FBF3E4"   # amber tint
     if s >= 35: return "#FAEEE6"   # orange tint
     return "#FAECEE"               # red tint
+
