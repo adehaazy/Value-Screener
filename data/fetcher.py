@@ -173,6 +173,14 @@ def _fetch_fundamentals(ticker, name, asset_class, group, force=False):
         "working_capital":   info.get("workingCapital"),
         "retained_earnings": info.get("retainedEarnings"),
         "current_ratio":     info.get("currentRatio"),
+        # -- Phase 2: ROIC inputs --
+        "total_equity": (
+            info.get("totalStockholderEquity") or (
+                (info.get("bookValue") or 0) * (info.get("sharesOutstanding") or 0)
+            ) or None
+        ),
+        "total_cash":        info.get("totalCash"),
+        "effective_tax_rate":info.get("effectiveTaxRate"),
         "cached_at":      datetime.now(timezone.utc).isoformat(),
         "cache_layer":    "fundamentals",
     }

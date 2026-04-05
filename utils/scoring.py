@@ -50,19 +50,21 @@ DEFAULT_QUALITY_THRESHOLDS = {
 }
 
 DEFAULT_WEIGHTS = {
-    # ── Non-financial stocks ─────────────────────────────────────────
+    # ── Non-financial stocks — weights sum to 100 ────────────────────
     # EV/EBITDA: best single measure of enterprise cheapness vs peers
-    "wt_evebitda":   30,
+    "wt_evebitda":   25,   # Phase 2: reduced from 30 to accommodate ROIC
     # P/FCF: rewards real cash generation, harder to manipulate
-    "wt_pfcf":       25,
-    # P/E: useful but noisy — kept for familiarity, lower weight
-    "wt_pe":         15,
+    "wt_pfcf":       20,   # Phase 2: reduced from 25
+    # P/E: useful but noisy — kept for familiarity
+    "wt_pe":         12,   # Phase 2: reduced from 15
     # Sector-relative P/B: useful as floor / asset backing check
-    "wt_pb":         10,
+    "wt_pb":          8,   # Phase 2: reduced from 10
     # Dividend yield: income signal + management confidence
-    "wt_divyield":   10,
-    # 52w position: contrarian signal — near lows = potential deep value
-    "wt_52w":        10,
+    "wt_divyield":    7,   # Phase 2: reduced from 10
+    # 12-month momentum (Phase 1 rename of 52w position)
+    "wt_52w":         8,   # Phase 2: reduced from 10
+    # ROIC: measures capital efficiency — how well mgmt deploys capital
+    "wt_roic":       20,   # Phase 2: new — 20% weight
 
     # ── Financial stocks ─────────────────────────────────────────────
     # Price / Tangible Book: primary valuation anchor for financials
@@ -146,6 +148,84 @@ def _accrual_ratio(inst: dict) -> float | None:
         return None
 
     return round((net_income - op_cf) / assets, 3)
+
+
+
+def _roic(inst: dict) -> float | None:
+    """
+    Return on Invested Capital = NOPAT / Invested Capital.
+    NOPAT  = EBIT × (1 - effective tax rate)   [default tax rate 21%]
+    IC     = Total Equity + Total Debt - Cash
+    Returns a decimal (e.g. 0.15 = 15% ROIC).  Returns None if data insufficient.
+    Skipped for financials (capital structure makes IC meaningless).
+    """
+    ebit   = _f(inst.get("ebit"))
+    equity = _f(inst.get("total_equity"))
+    debt   = _f(inst.get("total_debt"))
+    cash   = _f(inst.get("total_cash"))
+    tax    = _f(inst.get("effective_tax_rate"))
+
+    if ebit is None or equity is None:
+        return None
+
+    # Use effective tax rate if available; fall back to 21% (reasonable global avg)
+    tax_rate = max(0.0, min(0.50, tax)) if tax is not None else 0.21
+    nopat    = ebit * (1.0 - tax_rate)
+
+    ic = (equity) + (debt or 0) - (cash or 0)
+    if ic <= 0:
+        return None  # negative/zero IC is uninterpretable
+
+    return round(nopat / ic, 4)   # e.g. 0.1547 = 15.5%
+
+
+def _earnings_quality_composite(inst: dict) -> tuple:
+    """
+    Returns (eq_score: float|None, nudge: int).
+    eq_score : 0-100 composite of accrual ratio + cash conversion ratio.
+    nudge    : +5 if high quality, -5 if low quality, 0 if neutral/missing.
+
+    Components:
+      Accrual ratio (lower = better):
+        < 0    → 80  (cash earnings exceed reported)
+        0–0.05 → 65  (normal)
+        0.05–0.10 → 50 (watch)
+        > 0.10 → 30  (concern)
+      Cash conversion  = Operating CF / Net Income  (higher = better):
+        > 1.2  → 80  (strong cash backing)
+        0.8–1.2 → 60 (normal)
+        0.5–0.8 → 40 (weak)
+        < 0.5  → 20  (poor — earnings not converting to cash)
+    """
+    ar  = _accrual_ratio(inst)
+    ocf = _f(inst.get("operating_cashflow"))
+    ni  = _f(inst.get("net_income"))
+
+    components = []
+
+    if ar is not None:
+        if ar < 0:        components.append(80)
+        elif ar < 0.05:   components.append(65)
+        elif ar < 0.10:   components.append(50)
+        else:             components.append(30)
+
+    if ocf is not None and ni is not None and abs(ni) > 0:
+        cc = ocf / ni
+        if cc > 1.2:      components.append(80)
+        elif cc > 0.8:    components.append(60)
+        elif cc > 0.5:    components.append(40)
+        else:             components.append(20)
+
+    if not components:
+        return None, 0
+
+    eq_score = sum(components) / len(components)
+
+    if   eq_score >= 65: nudge = +5
+    elif eq_score <= 40: nudge = -5
+    else:                nudge = 0
+
+    return round(eq_score, 1), nudge
 
 
 def _sector_median(sector_medians: dict, sector: str, key: str) -> float | None:
@@ -271,13 +351,14 @@ def _score_stock(inst: dict, sector_medians: dict, weights: dict) -> dict:
     sector = inst.get("sector", "Unknown")
     sm = sector_medians.get(sector, {})
 
-    wt_ev   = weights.get("wt_evebitda", 30)
-    wt_fcf  = weights.get("wt_pfcf",     25)
-    wt_pe   = weights.get("wt_pe",       15)
-    wt_pb   = weights.get("wt_pb",       10)
-    wt_div  = weights.get("wt_divyield", 10)
-    wt_52w  = weights.get("wt_52w",      10)
-    total_wt = wt_ev + wt_fcf + wt_pe + wt_pb + wt_div + wt_52w
+    wt_ev   = weights.get("wt_evebitda", 25)   # Phase 2: rebalanced
+    wt_fcf  = weights.get("wt_pfcf",     20)
+    wt_pe   = weights.get("wt_pe",       12)
+    wt_pb   = weights.get("wt_pb",        8)
+    wt_div  = weights.get("wt_divyield",  7)
+    wt_52w  = weights.get("wt_52w",       8)
+    wt_roic = weights.get("wt_roic",     20)   # Phase 2: ROIC
+    total_wt = wt_ev + wt_fcf + wt_pe + wt_pb + wt_div + wt_52w + wt_roic  # = 100
 
     scores = {}
     used_wt = 0.0
@@ -332,6 +413,23 @@ def _score_stock(inst: dict, sector_medians: dict, weights: dict) -> dict:
         used_wt += wt_52w
         weighted_sum += 50.0 * wt_52w
 
+
+    # Phase 2: ROIC — higher is better, compare vs sector median
+    roic = _roic(inst)
+    if roic is not None and not _is_financial(inst):
+        roic_score = _score_vs_median(roic, sm.get("roic"), lower_is_better=False, sensitivity=2.0)
+        if roic_score is None:
+            # No sector median yet — score absolutely: 15%+ ROIC is excellent
+            if   roic >= 0.20: roic_score = 90
+            elif roic >= 0.15: roic_score = 75
+            elif roic >= 0.10: roic_score = 60
+            elif roic >= 0.05: roic_score = 45
+            else:              roic_score = 25
+        scores["roic_score"] = roic_score
+        used_wt += wt_roic
+        weighted_sum += roic_score * wt_roic
+
+
     if used_wt == 0:
         return {**inst, "score": None, "score_components": scores,
                 "score_coverage": 0.0, "is_financial": False}
@@ -354,16 +452,23 @@ def _score_stock(inst: dict, sector_medians: dict, weights: dict) -> dict:
     if ar is not None and ar > 0.10:
         risk_flags.append({"type": "accruals", "label": f"⚠ Earnings quality ({ar:+.2f})", "detail": f"Accrual ratio {ar:.2f} — paper profits may exceed cash earnings"})
 
+    # Phase 2: earnings quality composite → score nudge + flag
+    eq_score, eq_nudge = _earnings_quality_composite(inst)
+    final_score = _clamp(score + eq_nudge)
+
     return {
         **inst,
-        "score": round(_clamp(score), 1),
+        "score":          round(final_score, 1),
+        "score_nudge":    eq_nudge,          # shown as (+5)/(-5) badge on card
         "score_components": scores,
         "score_coverage": round(coverage, 2),
-        "is_financial": False,
-        "p_fcf": p_fcf,
-        "altman_z": z,
-        "accrual_ratio": ar,
-        "risk_flags": risk_flags,
+        "is_financial":   False,
+        "p_fcf":          p_fcf,
+        "roic":           roic,
+        "altman_z":       z,
+        "accrual_ratio":  ar,
+        "eq_score":       eq_score,          # 0-100 earnings quality composite
+        "risk_flags":     risk_flags,
     }
 
 
@@ -600,6 +705,8 @@ def compute_sector_medians(instruments: list[dict]) -> dict:
         ("roe",          lambda i: _f(i.get("roe"))),
         ("pfcf",         lambda i: _compute_pfcf(i)),
         ("de",           lambda i: _f(i.get("debt_to_equity") or i.get("debtToEquity"))),
+        # Phase 2: ROIC sector median for comparative scoring
+        ("roic",         lambda i: _roic(i)),
     ]
 
     def _compute_pfcf(inst):
