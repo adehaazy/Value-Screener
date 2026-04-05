@@ -10,8 +10,29 @@ __pycache__/
 .env
 *.env
 
+# Streamlit secrets — NEVER commit this file
+.streamlit/secrets.toml
+
 # Mac system files
 .DS_Store
 
 # The nested screener-v3 working copy (duplicate of root files)
 screener-v3/
+
+# Database file — regenerated automatically on first run
+auth.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Python virtual environment folders
+venv/
+.venv/
+env/
+
+# VS Code / editor settings
+.vscode/
+.idea/
+
+# Streamlit local config (not secrets, just personal preferences)
+.streamlit/config.toml
