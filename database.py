@@ -126,6 +126,56 @@ def init_db(db_path: str = DB_PATH) -> None:
             )
         """)
 
+        # Per-user app data tables (watchlist, holdings, preferences)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_watchlist (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT NOT NULL,
+                ticker      TEXT NOT NULL,
+                name        TEXT,
+                data        TEXT NOT NULL DEFAULT '{}',
+                added_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                UNIQUE(user_id, ticker)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_holdings (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT NOT NULL,
+                ticker      TEXT NOT NULL,
+                name        TEXT,
+                data        TEXT NOT NULL DEFAULT '{}',
+                added_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                UNIQUE(user_id, ticker)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_prefs (
+                user_id     TEXT PRIMARY KEY,
+                data        TEXT NOT NULL DEFAULT '{}',
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_custom_tickers (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT NOT NULL,
+                ticker      TEXT NOT NULL,
+                name        TEXT,
+                group_name  TEXT,
+                asset_class TEXT DEFAULT 'Stock',
+                added_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                UNIQUE(user_id, ticker)
+            )
+        """)
+
         # Indexes for performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)")
@@ -133,6 +183,9 @@ def init_db(db_path: str = DB_PATH) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_event_timestamp ON audit_logs(event_timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_verification_tokens_user_id ON verification_tokens(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_watchlist_uid ON user_watchlist(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_holdings_uid ON user_holdings(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_custom_tickers_uid ON user_custom_tickers(user_id)")
 
         logger.info("Database initialized successfully.")
 

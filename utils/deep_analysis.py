@@ -4,9 +4,15 @@ Deep Analysis — qualitative value investing evaluation via Claude API.
 For a single watchlist instrument:
   1. Assembles a rich data context from the cached instrument dict
      plus optional extra text (transcripts, filings, user notes)
-  2. Calls claude-sonnet-4-6 with the master value investing prompt
+  2. Calls claude-haiku-4-5-20251001 for the initial analysis (fast, cheap)
+     OR claude-sonnet-4-6 if force_sonnet=True (explicit user refresh)
   3. Parses and caches the structured JSON response
   4. Returns the analysis dict
+
+Model strategy:
+  - Default (auto): claude-haiku-4-5-20251001 (~10x cheaper, ~3x faster)
+  - Force refresh:  claude-sonnet-4-6 (full depth, on explicit user request)
+  - The model used is stored in the cache as "_model" for display in the UI
 
 Cache TTL: 7 days (qualitative analysis doesn't change hourly)
 Requires: ANTHROPIC_API_KEY environment variable
@@ -20,6 +26,10 @@ from datetime import datetime, timedelta, timezone
 CACHE_DIR = Path(__file__).parent.parent / "cache" / "deep_analysis"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_TTL_DAYS = 7
+
+# Model routing
+MODEL_HAIKU  = "claude-haiku-4-5-20251001"   # default — fast and cheap
+MODEL_SONNET = "claude-sonnet-4-6"            # full depth — explicit refresh only
 
 
 # ── Cache helpers ─────────────────────────────────────────────────────────────
@@ -295,11 +305,21 @@ are most fragile, what would cause this investment to fail."""
 
 # ── API call ──────────────────────────────────────────────────────────────────
 
-def run_deep_analysis(inst: dict, extra_context: str = "") -> dict:
+def run_deep_analysis(inst: dict, extra_context: str = "",
+                      force_sonnet: bool = False) -> dict:
     """
     Run the full qualitative analysis for one instrument.
+
+    Parameters
+    ----------
+    inst          : instrument dict from the screener cache
+    extra_context : optional user-supplied text (transcripts, notes, filings)
+    force_sonnet  : if True, uses claude-sonnet-4-6 regardless of cache state.
+                    Use this for explicit "deep refresh" button clicks.
+                    Default (False) uses claude-haiku-4-5-20251001 — ~10x cheaper.
+
     Returns the parsed analysis dict (also caches it).
-    Raises RuntimeError if API key is missing or call fails.
+    Raises RuntimeError if API key is missing or the API call fails.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
@@ -315,15 +335,16 @@ def run_deep_analysis(inst: dict, extra_context: str = "") -> dict:
             "anthropic package not installed. Run: pip install anthropic"
         )
 
-    data_context = build_data_context(inst)
+    model = MODEL_SONNET if force_sonnet else MODEL_HAIKU
 
-    user_content = f"{data_context}"
+    data_context = build_data_context(inst)
+    user_content = data_context
     if extra_context.strip():
         user_content += f"\n\n── ADDITIONAL CONTEXT (provided by user) ────────────\n{extra_context.strip()}"
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=model,
         max_tokens=4096,
         system=MASTER_PROMPT,
         messages=[
@@ -333,7 +354,7 @@ def run_deep_analysis(inst: dict, extra_context: str = "") -> dict:
 
     raw_text = message.content[0].text.strip()
 
-    # Strip markdown code fences if model wrapped anyway
+    # Strip markdown code fences if model wrapped them anyway
     if raw_text.startswith("```"):
         raw_text = raw_text.split("```")[1]
         if raw_text.startswith("json"):
@@ -345,5 +366,7 @@ def run_deep_analysis(inst: dict, extra_context: str = "") -> dict:
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Model returned invalid JSON: {e}\n\nRaw output:\n{raw_text[:500]}")
 
+    # Store which model was used — shown in UI as "Haiku" or "Sonnet"
+    result["_model"] = model
     _save_analysis(inst["ticker"], result)
     return result

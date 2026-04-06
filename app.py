@@ -49,6 +49,15 @@ from utils.deep_analysis   import (run_deep_analysis, load_cached_analysis,
                                     cache_age_days, build_data_context)
 from utils.news_fetcher    import (get_signals_from_news, get_market_mood,
                                     get_sector_news_for_briefing, fetch_news_for_ticker)
+from user_data import (
+    load_watchlist, save_watchlist, add_to_watchlist, remove_from_watchlist,
+    load_holdings, save_holdings, add_to_holdings, remove_from_holdings,
+    load_prefs, save_prefs,
+    load_custom_tickers, add_custom_ticker, remove_custom_ticker,
+    migrate_legacy_data_for_user,
+)
+from utils.score_history import snapshot_scores, init_history_db
+init_history_db()  # ensure table exists on startup
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1055,63 +1064,142 @@ header[data-testid="stHeader"] { display: none !important; }
 
 /* ── Mobile responsive overrides ── */
 @media (max-width: 768px) {
-  /* Reduce page padding */
+  /* Viewport meta — prevent zoom on input focus */
+  /* (set via Streamlit's page config — cannot inject via CSS) */
+
+  /* ── Page padding ── */
   .block-container {
-    padding-left: 16px !important;
-    padding-right: 16px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-bottom: 80px !important; /* space for sticky mobile nav */
   }
 
-  /* Nav bar: compress and allow scroll */
+  /* ── Nav bar: wordmark + hamburger only; links hidden ── */
   .vs-topnav {
-    padding: 0 16px !important;
-    margin-left: -16px !important;
-    margin-right: -16px !important;
-    width: calc(100% + 32px) !important;
-  }
-  .vs-topnav-links {
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-  .vs-topnav-link {
     padding: 0 12px !important;
-    font-size: 10px !important;
-    white-space: nowrap !important;
-  }
-  .vs-topnav-wordmark { font-size: 15px !important; }
-  .vs-topnav-settings { display: none !important; }
-
-  /* Hero band */
-  .vs-hero {
-    padding: 24px 16px 20px !important;
+    height: 48px !important;
     margin-left: -16px !important;
     margin-right: -16px !important;
     width: calc(100% + 32px) !important;
   }
-  .vs-hero-greeting { font-size: 26px !important; }
-  .vs-hero-timestamp { font-size: 10px !important; }
-  .vs-hero-stats { grid-template-columns: repeat(2, 1fr) !important; }
-  .vs-hero-stat-val { font-size: 24px !important; }
+  .vs-topnav-links { display: none !important; }
+  .vs-topnav-settings { display: none !important; }
+  .vs-topnav-wordmark { font-size: 14px !important; }
 
-  /* Stat bar: two cells per row */
+  /* ── Sticky bottom tab bar — Streamlit-compatible ── */
+  /* This injects a fixed bottom bar with the 5 main nav items as large tap targets.
+     The actual navigation triggers hidden Streamlit buttons via JS.
+     Compromise: same nav JS as the hamburger, re-used for bottom bar clicks. */
+  .vs-mobile-bottombar {
+    display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 58px;
+    background: var(--vs-bg-card);
+    border-top: 1px solid var(--vs-rule);
+    z-index: 9999;
+    align-items: stretch;
+    justify-content: space-around;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .vs-mobile-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-family: var(--vs-sans);
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vs-ink-soft);
+    border: none;
+    background: none;
+    padding: 6px 4px 4px;
+    min-height: 44px; /* WCAG tap target */
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.12s;
+  }
+  .vs-mobile-tab.active { color: var(--vs-accent); }
+  .vs-mobile-tab svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.5; fill: none; }
+  .vs-mobile-tab span { margin-top: 2px; }
+
+  /* ── Hero band ── */
+  .vs-hero {
+    padding: 20px 12px 16px !important;
+    margin-left: -12px !important;
+    margin-right: -12px !important;
+    width: calc(100% + 24px) !important;
+  }
+  .vs-hero-greeting { font-size: 24px !important; }
+  .vs-hero-timestamp { font-size: 10px !important; }
+  .vs-hero-stats { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+  .vs-hero-stat-val { font-size: 22px !important; }
+
+  /* ── Stat bar: two-column wrap ── */
   .vs-statbar { flex-wrap: wrap !important; }
-  .vs-statbar-cell { flex: 0 0 50% !important; border-right: none !important; border-bottom: 1px solid #D4D4D2 !important; }
-  .vs-statbar-cell:nth-child(odd) { border-right: 1px solid #D4D4D2 !important; }
+  .vs-statbar-cell { flex: 0 0 50% !important; border-right: none !important; border-bottom: 1px solid var(--vs-rule) !important; }
+  .vs-statbar-cell:nth-child(odd) { border-right: 1px solid var(--vs-rule) !important; }
   .vs-statbar-cell:last-child { border-bottom: none !important; }
   .vs-statbar-val { font-size: 20px !important; }
 
-  /* Cards: full width, slightly less padding */
-  .card { padding: 18px !important; }
-  .card-name { font-size: 18px !important; }
-  .card-score-num { font-size: 28px !important; }
+  /* ── Cards: full width, comfortable touch padding ── */
+  .card { padding: 16px !important; }
+  .card-name { font-size: 17px !important; }
+  .card-score-num { font-size: 26px !important; }
+  .card-bullet { font-size: 12px !important; }
+  .card-metrics { gap: 6px !important; }
 
-  /* Section header text */
-  .vs-section-title { font-size: 11px !important; }
+  /* ── Buttons: minimum 44px tap targets ── */
+  .stButton > button {
+    min-height: 44px !important;
+    font-size: 13px !important;
+    padding: 10px 14px !important;
+  }
+
+  /* ── Inputs: prevent iOS zoom (font-size >= 16px) ── */
+  input[type="text"], input[type="password"], input[type="email"],
+  textarea, select {
+    font-size: 16px !important;
+  }
+
+  /* ── Metric tiles ── */
+  [data-testid="stMetric"] { padding: 10px 8px !important; }
+  [data-testid="stMetricValue"] { font-size: 20px !important; }
+  [data-testid="stMetricLabel"] { font-size: 11px !important; }
+
+  /* ── Score breakdown: vertical stack ── */
+  .breakdown-row { flex-direction: column !important; gap: 4px !important; }
+  .breakdown-bar-bg { width: 100% !important; }
+
+  /* ── Column gaps ── */
+  [data-testid="stHorizontalBlock"] { gap: 8px !important; }
+
+  /* ── Macro bar: compress ── */
+  .vs-macro-bar { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; flex-wrap: nowrap !important; }
+  .macro-item { min-width: 64px !important; }
+  .macro-item-val { font-size: 14px !important; }
+
+  /* ── Section headers ── */
+  .vs-section-title { font-size: 10px !important; }
+  .vs-section-link { font-size: 10px !important; }
+
+  /* ── Page titles ── */
+  .stMarkdown h1, .stMarkdown div[style*="font-size:38px"] {
+    font-size: 28px !important;
+    padding-top: 16px !important;
+  }
 }
 
 @media (max-width: 480px) {
-  .vs-topnav-link { padding: 0 10px !important; font-size: 9px !important; }
-  .vs-hero-greeting { font-size: 22px !important; }
+  .vs-hero-greeting { font-size: 20px !important; }
   .vs-hero-stats { grid-template-columns: repeat(2, 1fr) !important; }
+  .block-container { padding-left: 8px !important; padding-right: 8px !important; }
+  .card-name { font-size: 15px !important; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1480,6 +1568,11 @@ def _save_json(filename: str, data):
     (CACHE_DIR / filename).write_text(json.dumps(data, default=str, indent=2))
 
 
+def _uid() -> str | None:
+    """Return the current user's ID from session state, or None for legacy mode."""
+    return st.session_state.get("user_id")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SESSION STATE INIT
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1489,41 +1582,16 @@ def _init_state():
         st.session_state.instruments = []
     if "sector_medians" not in st.session_state:
         st.session_state.sector_medians = {}
+    uid = _uid()
     if "watchlist" not in st.session_state:
-        st.session_state.watchlist = _load_json("watchlist.json", [])
+        st.session_state.watchlist = load_watchlist(uid)
     if "holdings" not in st.session_state:
-        st.session_state.holdings = _load_json("holdings.json", [])
+        st.session_state.holdings = load_holdings(uid)
     if "user_name" not in st.session_state:
-        st.session_state.user_name = st.secrets.get("APP_USERNAME", "")
+        st.session_state.user_name = st.session_state.get("email", st.secrets.get("APP_USERNAME", ""))
     if "prefs" not in st.session_state:
-        st.session_state.prefs = _load_json("prefs.json", {
-            # Display filters
-            "groups":    ["UK Stocks", "ETFs & Index Funds"],
-            "min_score": 0,
-            "min_yield": 0.0,
-            "max_pe":    100,
-            "max_ter":   1.5,
-            # Quality gate (stocks)
-            "min_roe":           10,   # % e.g. 10 = 10%
-            "max_de":            2,    # ratio e.g. 2 = 2.0x
-            "min_profit_margin": 2,    # % e.g. 2 = 2%
-            "require_pos_fcf":   True,
-            # Stock valuation weights (relative importance, 0–100)
-            "wt_pe":       30,
-            "wt_pb":       20,
-            "wt_evebitda": 20,
-            "wt_divyield": 15,
-            "wt_52w":      15,
-            # ETF weights
-            "wt_etf_aum":    35,
-            "wt_etf_ter":    35,
-            "wt_etf_ret":    20,
-            "wt_etf_mom":    10,
-            # Money market weights
-            "wt_mm_yield":   60,
-            "wt_mm_aum":     25,
-            "wt_mm_ter":     15,
-        })
+        # load_prefs always returns a complete dict (merged with defaults)
+        st.session_state.prefs = load_prefs(uid)
 
     # ── Migrate legacy emoji market group keys in saved prefs ────────────────
     _key_map = {
@@ -1537,7 +1605,7 @@ def _init_state():
     _migrated = [_key_map.get(g, g) for g in _groups]
     if _migrated != _groups:
         st.session_state.prefs["groups"] = _migrated
-        _save_json("prefs.json", st.session_state.prefs)
+        save_prefs(_uid(), st.session_state.prefs)
     if "scoring_changed" not in st.session_state:
         st.session_state.scoring_changed = False  # True when weights changed but not rescored
     if "last_fetch" not in st.session_state:
@@ -1866,7 +1934,12 @@ def _build_scoring_weights() -> dict:
 def load_all_data(groups: list, progress_cb=None) -> tuple:
     """Fetch all instruments, score them, compute sector medians."""
     raw = []
-    total_tickers = sum(len(UNIVERSE[g]["tickers"]) for g in groups if g in UNIVERSE)
+    # Include custom tickers in total count for progress bar
+    _custom_tks = load_custom_tickers(_uid())
+    total_tickers = (
+        sum(len(UNIVERSE[g]["tickers"]) for g in groups if g in UNIVERSE)
+        + len(_custom_tks)
+    )
     done = 0
 
     for group in groups:
@@ -1885,6 +1958,19 @@ def load_all_data(groups: list, progress_cb=None) -> tuple:
             # No sleep needed if data came from local cache.
             if needs_live_fetch and inst.get("ok") and done < total_tickers:
                 time.sleep(0.4)  # 400 ms between live fetches (~2.5 req/s)
+
+    # ── Custom user tickers ───────────────────────────────────────────────────
+    for ct in _custom_tks:
+        needs_live_fetch = not _cache_is_fresh(ct["ticker"])
+        inst = fetch_one(ct["ticker"], ct.get("name", ct["ticker"]),
+                         ct.get("asset_class", "Stock"), ct.get("group_name", "Custom"))
+        raw.append(inst)
+        done += 1
+        if progress_cb:
+            progress_cb(done / max(total_tickers, 1),
+                        f"Loading custom — {ct['ticker']}")
+        if needs_live_fetch and inst.get("ok") and done < total_tickers:
+            time.sleep(0.4)
 
     sector_medians = compute_sector_medians(raw)
     qt = _build_quality_thresholds()
@@ -1957,6 +2043,11 @@ if _do_auto_refresh:
         st.session_state.sector_medians = _sm
         st.session_state.last_fetch     = datetime.now().strftime("%H:%M  %d %b %Y")
         st.session_state.last_auto_refresh = datetime.now(timezone.utc).isoformat()
+        # Snapshot today's real scores into history
+        try:
+            snapshot_scores(_scored)
+        except Exception:
+            pass
         _ok = [x for x in _scored if x.get("ok")]
         save_scan_summary({
             "total": len(_ok),
@@ -2400,6 +2491,51 @@ def _render_topnav():
 _render_topnav()
 
 
+# ── Mobile bottom tab bar ──────────────────────────────────────────────────────
+# Rendered below topnav; hidden on desktop via @media. Uses the same hidden
+# Streamlit buttons as the topnav — JS clicks them when a tab is tapped.
+def _render_mobile_bottombar():
+    _cur = st.session_state.page
+    _tabs = [
+        ("home",     "Home",     '<path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/>'),
+        ("screener", "Screen",   '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6M8 11h6"/>'),
+        ("deepdive", "Deepdive", '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>'),
+        ("briefing", "Briefing", '<path d="M4 4h16v12H4z"/><path d="M8 20h8M12 16v4"/>'),
+        ("settings", "Settings", '<circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>'),
+    ]
+    tabs_html = ""
+    for key, label, svg_path in _tabs:
+        active_cls = " active" if _cur == key else ""
+        tabs_html += (
+            f'<button class="vs-mobile-tab{active_cls}" id="mbt_{key}" aria-label="{label}">'
+            f'<svg viewBox="0 0 24 24">{svg_path}</svg>'
+            f'<span>{label}</span>'
+            f'</button>'
+        )
+    st.markdown(
+        f'<div class="vs-mobile-bottombar">{tabs_html}</div>'
+        f'<script>'
+        f'(function(){{'
+        f'  var tabs=[{",".join(repr(k) for k,_,__ in _tabs)}];'
+        f'  tabs.forEach(function(k){{'
+        f'    var btn=document.getElementById("mbt_"+k);'
+        f'    if(!btn||btn._mbt)return;'
+        f'    btn._mbt=true;'
+        f'    btn.addEventListener("click",function(){{'
+        f'      var nb=document.querySelectorAll("[data-testid=\'stButton\'] button");'
+        f'      nb.forEach(function(b){{'
+        f'        if(b.innerText.trim().toLowerCase()===k.toLowerCase()||'
+        f'           b.getAttribute("data-key")==="topnav_btn_"+k){{b.click();}}'
+        f'      }});'
+        f'    }});'
+        f'  }});'
+        f'}})();</script>',
+        unsafe_allow_html=True,
+    )
+
+_render_mobile_bottombar()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # DATA CONTROLS (Markets + Filters) — rendered inline on relevant pages
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2417,7 +2553,7 @@ def _render_data_controls():
         )
         if set(chosen_groups) != set(st.session_state.prefs.get("groups", [])):
             st.session_state.prefs["groups"] = chosen_groups
-            _save_json("prefs.json", st.session_state.prefs)
+            save_prefs(_uid(), st.session_state.prefs)
 
         _age = cache_age_hours()
         col_info, col_btn, col_toggle = st.columns([3, 2, 3])
@@ -2447,6 +2583,11 @@ def _render_data_controls():
                     st.session_state.sector_medians = sm
                     st.session_state.last_fetch     = datetime.now().strftime("%H:%M  %d %b %Y")
                     st.session_state.last_auto_refresh = datetime.now(timezone.utc).isoformat()
+                    # Snapshot today's real scores into history
+                    try:
+                        snapshot_scores(scored)
+                    except Exception:
+                        pass
                     ok = [x for x in scored if x.get("ok")]
                     save_scan_summary({
                         "total": len(ok),
@@ -2513,7 +2654,7 @@ def _render_screen_filters():
             if min_roe != p.get("min_roe") or max_de != p.get("max_de"):
                 p["min_roe"] = min_roe
                 p["max_de"]  = max_de
-                _save_json("prefs.json", p)
+                save_prefs(_uid(), p)
 
         changed = (min_score != p.get("min_score") or min_yield != p.get("min_yield")
                    or max_pe != p.get("max_pe") or max_ter != p.get("max_ter"))
@@ -2522,7 +2663,7 @@ def _render_screen_filters():
             p["min_yield"] = min_yield
             p["max_pe"]    = max_pe
             p["max_ter"]   = max_ter
-            _save_json("prefs.json", p)
+            save_prefs(_uid(), p)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2610,6 +2751,67 @@ def _render_score_breakdown(inst: dict):
         note += f" · Data coverage {coverage*100:.0f}%"
     note += "</div>"
     st.markdown(f'<div style="padding:4px 0">{rows_html}{note}</div>', unsafe_allow_html=True)
+
+    # ── Quality gate detail ────────────────────────────────────────────────────
+    ac = inst.get("asset_class", "")
+    if ac == "Stock":
+        passes  = inst.get("quality_passes", True)
+        reasons = inst.get("quality_fail_reasons", [])
+        flags   = inst.get("quality_flags", [])
+
+        # Gate metrics with their actual values
+        roe_val   = inst.get("roe")
+        de_val    = inst.get("debt_equity")
+        pm_val    = inst.get("profit_margin")
+        fcf_val   = inst.get("free_cashflow")
+        accrual   = inst.get("accrual_ratio")      # may be None if not computed
+        altman    = inst.get("altman_z")            # may be None
+
+        gate_icon = "✅ Quality gate: PASS" if passes else "⚠️ Quality gate: FAIL"
+        gate_col  = "#1A1A1A" if passes else "#777777"
+
+        gate_rows = []
+        if roe_val is not None:
+            roe_pct = roe_val * 100 if abs(roe_val) < 5 else roe_val
+            gate_rows.append(f"ROE {roe_pct:.1f}%")
+        if de_val is not None:
+            gate_rows.append(f"D/E {de_val:.2f}x")
+        if pm_val is not None:
+            pm_pct = pm_val * 100 if abs(pm_val) < 2 else pm_val
+            gate_rows.append(f"Margin {pm_pct:.1f}%")
+        if fcf_val is not None:
+            fcf_sign = "+" if fcf_val >= 0 else "−"
+            fcf_abs  = abs(fcf_val)
+            fcf_disp = f"{fcf_abs/1e9:.1f}bn" if fcf_abs >= 1e9 else f"{fcf_abs/1e6:.0f}m" if fcf_abs >= 1e6 else f"{fcf_abs:,.0f}"
+            gate_rows.append(f"FCF {fcf_sign}{fcf_disp}")
+        if accrual is not None:
+            gate_rows.append(f"Accrual ratio {accrual:.3f}")
+        if altman is not None:
+            z_risk = " (distress)" if altman < 1.81 else " (grey zone)" if altman < 2.99 else " (safe)"
+            gate_rows.append(f"Altman Z {altman:.2f}{z_risk}")
+
+        metrics_str = "  ·  ".join(gate_rows) if gate_rows else "—"
+        fail_html = ""
+        if reasons:
+            fail_html = (
+                f'<div style="color:#777777;font-size:0.72rem;margin-top:3px">'
+                f'Fail reasons: {" · ".join(reasons)}</div>'
+            )
+        flag_html = ""
+        if flags:
+            flag_html = (
+                f'<div style="color:#555;font-size:0.72rem;margin-top:2px">'
+                f'Flags: {" · ".join(flags)}</div>'
+            )
+        st.markdown(
+            f'<div style="margin-top:8px;padding:8px 12px;background:#F8F8F6;'
+            f'border:1px solid #D4D4D2;border-left:3px solid {"#1A3A5C" if passes else "#777777"}">'
+            f'<div style="font-weight:600;font-size:0.78rem;color:{gate_col}">{gate_icon}</div>'
+            f'<div style="font-size:0.72rem;color:#444444;margin-top:2px">{metrics_str}</div>'
+            f'{fail_html}{flag_html}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3000,7 +3202,7 @@ def render_card(inst: dict, show_add_watchlist=True):
                     st.session_state.watchlist = [
                         w for w in st.session_state.watchlist if w["ticker"] != ticker
                     ]
-                    _save_json("watchlist.json", st.session_state.watchlist)
+                    save_watchlist(_uid(), st.session_state.watchlist)
                     st.session_state.toast = (f"Removed {name} from watchlist", "info")
                     st.rerun()
             else:
@@ -3016,7 +3218,7 @@ def render_card(inst: dict, show_add_watchlist=True):
                         "conviction":       "medium",
                     }
                     st.session_state.watchlist.append(entry)
-                    _save_json("watchlist.json", st.session_state.watchlist)
+                    save_watchlist(_uid(), st.session_state.watchlist)
                     # FIX UX: toast confirmation instead of silent rerun
                     st.session_state.toast = (f"{name} added to watchlist", "success")
                     st.rerun()
@@ -3421,6 +3623,39 @@ def page_screener():
         st.warning("Nothing matches your current filters — try loosening them above.")
         return
 
+    # ── CSV export ─────────────────────────────────────────────────────────────
+    def _screener_csv(insts):
+        import io
+        _fields = ["ticker", "name", "group", "asset_class", "score", "quality_passes",
+                   "price", "ytd_pct", "yr1_pct", "pe", "pb", "ev_ebitda",
+                   "div_yield", "roe", "debt_equity", "profit_margin", "free_cashflow",
+                   "market_cap", "verdict"]
+        buf = io.StringIO()
+        buf.write(",".join(_fields) + "\n")
+        for inst in insts:
+            row = []
+            for f in _fields:
+                v = inst.get(f, "")
+                if isinstance(v, float):
+                    v = f"{v:.4f}"
+                elif isinstance(v, bool):
+                    v = "TRUE" if v else "FALSE"
+                elif v is None:
+                    v = ""
+                row.append(str(v).replace(",", ";"))
+            buf.write(",".join(row) + "\n")
+        return buf.getvalue().encode("utf-8")
+
+    _exp_col, _ = st.columns([2, 6])
+    with _exp_col:
+        st.download_button(
+            label=f"Export {len(filtered)} results (CSV)",
+            data=_screener_csv(filtered),
+            file_name=f"value_screener_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            key="screener_csv_btn",
+        )
+
     # ── Flagged-only toggle ────────────────────────────────────────────────────
     if flagged_count > 0:
         flag_col, _ = st.columns([2, 3])
@@ -3672,7 +3907,7 @@ def _render_search_result():
                     "notes":            "",
                 }
                 st.session_state.watchlist.append(entry)
-                _save_json("watchlist.json", st.session_state.watchlist)
+                save_watchlist(_uid(), st.session_state.watchlist)
                 st.session_state.toast = (f"{name} added to watchlist", "success")
                 st.session_state.wl_search_result = None
                 st.rerun()
@@ -3766,10 +4001,16 @@ def _render_deep_analysis(inst: dict):
     st.markdown("---")
     _section_header("Deep Analysis")
 
-    # Status line
+    # Status line — show model used if cached
     if cached:
-        age_str = f"{age:.1f} days ago" if age is not None else "recently"
-        st.caption(f"Last analysed {age_str} · {cached.get('confidence','—')} confidence · Scores reflect data available at time of analysis")
+        age_str   = f"{age:.1f} days ago" if age is not None else "recently"
+        _model    = cached.get("_model", "")
+        _model_lbl = "Sonnet" if "sonnet" in _model else ("Haiku" if "haiku" in _model else "")
+        _model_tag = f" · via {_model_lbl}" if _model_lbl else ""
+        st.caption(
+            f"Last analysed {age_str} · {cached.get('confidence','—')} confidence"
+            f"{_model_tag} · Scores reflect data available at time of analysis"
+        )
     else:
         st.caption("No analysis run yet. Add any extra context below, then click Analyse.")
 
@@ -3791,13 +4032,16 @@ def _render_deep_analysis(inst: dict):
     if new_extra != extra_val:
         st.session_state.da_extra[ticker] = new_extra
 
-    # Run controls
-    btn_c1, btn_c2, _ = st.columns([2, 2, 4])
+    # Run controls — three buttons: Haiku (fast/cheap), Sonnet (deep), Clear
+    btn_c1, btn_c2, btn_c3, _ = st.columns([2, 2, 2, 2])
     with btn_c1:
-        run_label = "Re-analyse" if cached else "Analyse"
+        run_label   = "Re-analyse (Haiku)" if cached else "Analyse"
         run_clicked = st.button(run_label, key=f"da_run_{ticker}", use_container_width=True,
                                 type="primary")
     with btn_c2:
+        deep_label    = "Deep refresh (Sonnet)" if cached else "Analyse — full depth"
+        deep_clicked  = st.button(deep_label, key=f"da_deep_{ticker}", use_container_width=True)
+    with btn_c3:
         if cached and st.button("Clear analysis", key=f"da_clear_{ticker}",
                                 use_container_width=True):
             try:
@@ -3809,12 +4053,22 @@ def _render_deep_analysis(inst: dict):
             st.rerun()
 
     # ── Run analysis ──────────────────────────────────────────────────────────
-    if run_clicked:
+    _force_sonnet = deep_clicked and not run_clicked
+    if run_clicked or deep_clicked:
         extra = st.session_state.da_extra.get(ticker, "")
-        with st.spinner(f"Analysing {name} — this takes 15–30 seconds …"):
+        _spinner_msg = (
+            f"Running deep analysis with Sonnet — 30–60 seconds …"
+            if _force_sonnet
+            else f"Analysing {name} with Haiku — 10–20 seconds …"
+        )
+        with st.spinner(_spinner_msg):
             try:
-                cached = run_deep_analysis(inst, extra_context=extra)
-                st.session_state.toast = (f"Deep analysis complete for {name}", "success")
+                cached = run_deep_analysis(inst, extra_context=extra,
+                                           force_sonnet=_force_sonnet)
+                _done_model = "Sonnet" if _force_sonnet else "Haiku"
+                st.session_state.toast = (
+                    f"Deep analysis complete for {name} ({_done_model})", "success"
+                )
                 st.rerun()
             except RuntimeError as e:
                 st.error(str(e))
@@ -3825,6 +4079,84 @@ def _render_deep_analysis(inst: dict):
 
     if not cached:
         return
+
+    # ── Score history sparkline ───────────────────────────────────────────────
+    _section_header("Score History (5 years)")
+    try:
+        from utils.score_history import get_score_history, has_history, backfill_ticker
+        import altair as alt
+
+        _has_hist = has_history(ticker)
+        if not _has_hist:
+            _bfc1, _bfc2 = st.columns([3, 1])
+            with _bfc1:
+                st.caption(
+                    "No score history yet. Click **Backfill 5yr** to download historical "
+                    "price data and compute proxy scores. Live scores will accumulate daily."
+                )
+            with _bfc2:
+                if st.button("Backfill 5yr", key=f"backfill_{ticker}",
+                             use_container_width=True):
+                    with st.spinner(f"Downloading 5 years of data for {ticker}…"):
+                        try:
+                            n = backfill_ticker(ticker, years=5)
+                            if n > 0:
+                                st.toast(f"Backfilled {n} data points for {ticker}")
+                                st.rerun()
+                            else:
+                                st.warning(f"No historical data found for {ticker} via yfinance.")
+                        except Exception as _be:
+                            st.error(f"Backfill failed: {_be}")
+        else:
+            _hist_df = get_score_history(ticker, days=365 * 5)
+            if not _hist_df.empty:
+                # Colour-code backfill vs live rows
+                _hist_df["type"] = _hist_df["source"].map(
+                    lambda s: "Proxy (price-based)" if s == "backfill" else "Live score"
+                )
+                _hist_df["date_str"] = _hist_df["date"].dt.strftime("%d %b %Y")
+
+                _chart = (
+                    alt.Chart(_hist_df)
+                    .mark_line(interpolate="monotone", strokeWidth=1.5)
+                    .encode(
+                        x=alt.X("date:T", title=None,
+                                axis=alt.Axis(format="%b %Y", labelAngle=-30)),
+                        y=alt.Y("score:Q", title="Score",
+                                scale=alt.Scale(domain=[0, 100])),
+                        color=alt.Color(
+                            "type:N",
+                            scale=alt.Scale(
+                                domain=["Proxy (price-based)", "Live score"],
+                                range=["#D4D4D2", "#1A3A5C"],
+                            ),
+                            legend=alt.Legend(title=None, orient="top-right"),
+                        ),
+                        tooltip=["date_str:N", "score:Q", "price:Q", "type:N"],
+                    )
+                    .properties(height=180)
+                    .configure_view(strokeWidth=0)
+                    .configure_axis(
+                        labelFont="Inter", titleFont="Inter",
+                        labelColor="#777777", titleColor="#777777",
+                        gridColor="#F0F0EE",
+                    )
+                )
+                st.altair_chart(_chart, use_container_width=True)
+                _earliest, _latest = _hist_df["date"].min(), _hist_df["date"].max()
+                _n_live = (_hist_df["source"] == "live").sum()
+                st.caption(
+                    f"{len(_hist_df)} data points · {_earliest.strftime('%d %b %Y')} → "
+                    f"{_latest.strftime('%d %b %Y')} · "
+                    f"{_n_live} live · grey = price-momentum proxy"
+                )
+            st.markdown("")
+    except ImportError:
+        st.caption("Install `altair` for score history charts: `pip install altair`")
+    except Exception as _he:
+        st.caption(f"Score history unavailable: {_he}")
+
+    st.markdown("---")
 
     # ── Render the result ─────────────────────────────────────────────────────
     overall = cached.get("overall_score", 0)
@@ -4027,9 +4359,12 @@ def _render_instrument_expander(entry: dict, list_key: str, live_data: dict,
                 if st.button("Remove", key=f"dd_rm_miss_{list_key}_{ticker}",
                              use_container_width=True):
                     lst = getattr(st.session_state, list_key)
-                    setattr(st.session_state, list_key,
-                            [x for x in lst if x["ticker"] != ticker])
-                    _save_json(f"{list_key}.json", getattr(st.session_state, list_key))
+                    updated = [x for x in lst if x["ticker"] != ticker]
+                    setattr(st.session_state, list_key, updated)
+                    if list_key == "holdings":
+                        save_holdings(_uid(), updated)
+                    else:
+                        save_watchlist(_uid(), updated)
                     st.rerun()
         return
 
@@ -4077,7 +4412,10 @@ def _render_instrument_expander(entry: dict, list_key: str, live_data: dict,
             for item in lst:
                 if item["ticker"] == ticker:
                     item["notes"] = notes
-            _save_json(f"{list_key}.json", lst)
+            if list_key == "holdings":
+                save_holdings(_uid(), lst)
+            else:
+                save_watchlist(_uid(), lst)
 
         btn_c1, btn_c2 = st.columns(2)
         with btn_c1:
@@ -4090,9 +4428,12 @@ def _render_instrument_expander(entry: dict, list_key: str, live_data: dict,
             if st.button(remove_label, key=f"dd_remove_{list_key}_{ticker}",
                          use_container_width=True):
                 lst = getattr(st.session_state, list_key)
-                setattr(st.session_state, list_key,
-                        [x for x in lst if x["ticker"] != ticker])
-                _save_json(f"{list_key}.json", getattr(st.session_state, list_key))
+                updated = [x for x in lst if x["ticker"] != ticker]
+                setattr(st.session_state, list_key, updated)
+                if list_key == "holdings":
+                    save_holdings(_uid(), updated)
+                else:
+                    save_watchlist(_uid(), updated)
                 st.session_state.toast = (f"Removed {inst['name']}", "info")
                 st.rerun()
 
@@ -4257,7 +4598,7 @@ def _render_dd_search_result(target: str):
             if st.button(f"Add to Holdings", key="dd_add_holdings",
                          use_container_width=True, type="primary"):
                 st.session_state.holdings.append(entry)
-                _save_json("holdings.json", st.session_state.holdings)
+                save_holdings(_uid(), st.session_state.holdings)
                 st.session_state.toast = (f"{name} added to holdings", "success")
                 st.session_state.dd_search_result = None
                 st.rerun()
@@ -4268,7 +4609,7 @@ def _render_dd_search_result(target: str):
             if st.button(f"Add to Watchlist", key="dd_add_watchlist",
                          use_container_width=True):
                 st.session_state.watchlist.append(entry)
-                _save_json("watchlist.json", st.session_state.watchlist)
+                save_watchlist(_uid(), st.session_state.watchlist)
                 st.session_state.toast = (f"{name} added to watchlist", "success")
                 st.session_state.dd_search_result = None
                 st.rerun()
@@ -4434,6 +4775,47 @@ def page_deepdive():
             )
         for entry in watchlist:
             _render_instrument_expander(entry, "watchlist", live_data)
+
+    # ── Export holdings + watchlist ────────────────────────────────────────────
+    if holdings or watchlist:
+        st.markdown("---")
+        _exp_h, _exp_wl, _ = st.columns([2, 2, 4])
+
+        def _list_csv(entries, live):
+            import io
+            _fields = ["ticker", "name", "group", "asset_class", "score",
+                       "price", "added_at", "price_when_added", "notes"]
+            buf = io.StringIO()
+            buf.write(",".join(_fields) + "\n")
+            for e in entries:
+                live_inst = live.get(e.get("ticker", ""), {})
+                row = []
+                for f in _fields:
+                    v = e.get(f) or live_inst.get(f, "")
+                    if isinstance(v, float): v = f"{v:.4f}"
+                    elif v is None: v = ""
+                    row.append(str(v).replace(",", ";"))
+                buf.write(",".join(row) + "\n")
+            return buf.getvalue().encode("utf-8")
+
+        if holdings:
+            with _exp_h:
+                st.download_button(
+                    label=f"Export holdings ({len(holdings)})",
+                    data=_list_csv(holdings, live_data),
+                    file_name=f"holdings_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    key="holdings_csv_btn",
+                )
+        if watchlist:
+            with _exp_wl:
+                st.download_button(
+                    label=f"Export watchlist ({len(watchlist)})",
+                    data=_list_csv(watchlist, live_data),
+                    file_name=f"watchlist_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    key="watchlist_csv_btn",
+                )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -4738,6 +5120,74 @@ def page_briefing():
                     )
             st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
+    # ── Full signals feed (dedicated section) ──────────────────────────────────
+    st.markdown("---")
+    _section_header("Signals Feed")
+
+    _all_signals = load_latest_signals()
+    _last_run    = get_last_run_time()
+    _sig_caption = f"Last updated: {_last_run}" if _last_run else "No signals run yet"
+    st.caption(_sig_caption)
+
+    if not _all_signals:
+        st.info(
+            "No signals generated yet.  Click **Generate Briefing** above to run the "
+            "surveillance engine — it will populate this feed with score drift, "
+            "value opportunities, macro warnings, news alerts, and insider signals."
+        )
+    else:
+        # Filter tabs: All / High / Holdings / Macro
+        _my_tickers = {
+            i.get("ticker") for i in (
+                st.session_state.watchlist + st.session_state.holdings
+            ) if i.get("ticker")
+        }
+        _tab_all, _tab_high, _tab_mine, _tab_macro = st.tabs(
+            [f"All ({len(_all_signals)})",
+             f"High priority ({sum(1 for s in _all_signals if s.get('severity') == 'high')})",
+             f"My holdings ({sum(1 for s in _all_signals if s.get('ticker') in _my_tickers)})",
+             "Macro"]
+        )
+
+        def _render_signals_list(sigs):
+            if not sigs:
+                st.caption("No signals in this category.")
+                return
+            for sig in sorted(sigs, key=lambda s: {"high": 0, "medium": 1, "low": 2, "info": 3}.get(s.get("severity", "info"), 3)):
+                _sev  = sig.get("severity", "info")
+                _col  = _severity_colour(_sev)
+                _icon = _severity_icon(_sev)
+                _ts   = sig.get("generated_at", sig.get("timestamp", ""))[:10] if sig.get("generated_at") or sig.get("timestamp") else ""
+                st.markdown(
+                    f'<div style="border-left:3px solid {_col};padding:10px 14px 10px 14px;'
+                    f'margin-bottom:6px;background:#FFFFFF;border:1px solid #D4D4D2;'
+                    f'border-left-width:3px">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+                    f'<div>'
+                    f'<span style="font-size:0.75rem;font-weight:700;text-transform:uppercase;'
+                    f'letter-spacing:0.06em;color:{_col}">{_type_label(sig.get("type",""))}</span>'
+                    f'<b style="display:block;color:#1A1A1A;font-size:0.88rem;margin-top:3px">'
+                    f'{sig.get("title","")}</b>'
+                    f'<span style="color:#444444;font-size:0.82rem">{sig.get("detail","")}</span>'
+                    f'</div>'
+                    f'<div style="text-align:right;flex-shrink:0;padding-left:12px">'
+                    f'<span style="font-size:0.75rem;color:#AAAAAA">{_ts}</span>'
+                    + (f'<br><span class="ticker" style="font-size:0.75rem">{sig.get("ticker","")}</span>'
+                       if sig.get("ticker") else "")
+                    + f'</div></div></div>',
+                    unsafe_allow_html=True,
+                )
+
+        with _tab_all:
+            _render_signals_list(_all_signals)
+        with _tab_high:
+            _render_signals_list([s for s in _all_signals if s.get("severity") == "high"])
+        with _tab_mine:
+            _render_signals_list([s for s in _all_signals if s.get("ticker") in _my_tickers])
+        with _tab_macro:
+            _macro_types = {"macro_warning", "macro_positive", "macro_info"}
+            _render_signals_list([s for s in _all_signals if s.get("type") in _macro_types])
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE: SETTINGS (Scoring Logic)
@@ -5007,7 +5457,7 @@ def page_settings():
     st.markdown("---")
 
     if changed:
-        _save_json("prefs.json", p)
+        save_prefs(_uid(), p)
         st.session_state.scoring_changed = True
 
     apply_col, reset_col, _ = st.columns([2, 2, 4])
@@ -5051,7 +5501,7 @@ def page_settings():
             }
             for k, v in defaults.items():
                 p[k] = v
-            _save_json("prefs.json", p)
+            save_prefs(_uid(), p)
             st.session_state.scoring_changed = True
             st.session_state.toast = ("Settings reset to defaults — click Apply & Rescore", "info")
             st.rerun()
@@ -5078,6 +5528,75 @@ def page_settings():
             unsafe_allow_html=True,
         )
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # SECTION 5: TICKER MANAGEMENT
+    # ═══════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    _section_header("Custom Tickers")
+    st.markdown(
+        "Add instruments beyond the built-in universe (FTSE 100, S&P 500, EU stocks, ETFs). "
+        "Enter any valid yfinance ticker symbol. Custom tickers are fetched and scored "
+        "alongside the main universe on your next data refresh."
+    )
+
+    _custom = load_custom_tickers(_uid())
+
+    # Add new ticker
+    with st.expander("Add a custom ticker", expanded=not _custom):
+        _add_cols = st.columns([2, 2, 2, 1])
+        with _add_cols[0]:
+            _new_ticker = st.text_input("Ticker symbol", placeholder="e.g. NOVO-B.CO",
+                                        key="custom_ticker_input").strip().upper()
+        with _add_cols[1]:
+            _new_name = st.text_input("Display name (optional)", placeholder="e.g. Novo Nordisk",
+                                      key="custom_name_input")
+        with _add_cols[2]:
+            _new_group = st.selectbox(
+                "Group",
+                ["UK Stocks", "EU Stocks", "US Stocks", "ETFs & Index Funds",
+                 "Money Market & Short Duration", "Custom"],
+                index=5,
+                key="custom_group_input",
+            )
+        with _add_cols[3]:
+            _new_ac = st.selectbox("Asset class", ["Stock", "ETF", "Money Market"],
+                                   key="custom_ac_input")
+
+        if st.button("Add ticker", key="custom_add_btn", type="primary"):
+            if not _new_ticker:
+                st.error("Please enter a ticker symbol.")
+            else:
+                ok = add_custom_ticker(
+                    _uid(), _new_ticker,
+                    name=_new_name or _new_ticker,
+                    group_name=_new_group,
+                    asset_class=_new_ac,
+                )
+                if ok:
+                    st.session_state.toast = (
+                        f"{_new_ticker} added — refresh data to include it in scores", "success"
+                    )
+                    st.rerun()
+                else:
+                    st.warning(f"{_new_ticker} is already in your custom list.")
+
+    # Current custom tickers
+    if _custom:
+        st.markdown(f"**{len(_custom)} custom ticker(s)**")
+        for ct in _custom:
+            _ct_c1, _ct_c2, _ct_c3, _ct_c4 = st.columns([2, 2, 2, 1])
+            _ct_c1.markdown(f"**{ct['ticker']}**")
+            _ct_c2.markdown(ct.get("name", ""))
+            _ct_c3.markdown(f"{ct.get('group_name','—')} · {ct.get('asset_class','Stock')}")
+            with _ct_c4:
+                if st.button("Remove", key=f"rm_custom_{ct['ticker']}",
+                             use_container_width=True):
+                    remove_custom_ticker(_uid(), ct["ticker"])
+                    st.session_state.toast = (f"Removed {ct['ticker']}", "info")
+                    st.rerun()
+    else:
+        st.caption("No custom tickers yet.")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ROUTER
@@ -5090,9 +5609,13 @@ elif page == "deepdive":  page_deepdive()
 elif page == "compare":   page_compare()
 elif page == "briefing":  page_briefing()
 elif page == "settings":  page_settings()
-elif page in ("watchlist", "signals"):
-    # Redirect legacy page keys
+elif page == "watchlist":
+    # Redirect legacy page key → deepdive (watchlist lives there)
     st.session_state.page = "deepdive"
+    st.rerun()
+elif page == "signals":
+    # Redirect legacy signals page → briefing (signals feed lives there)
+    st.session_state.page = "briefing"
     st.rerun()
 else:
     st.session_state.page = "home"

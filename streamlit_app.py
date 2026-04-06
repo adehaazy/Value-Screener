@@ -19,6 +19,7 @@ from auth_utils import (
     verify_email,
 )
 from database import cleanup_expired_sessions, cleanup_expired_tokens, init_db
+from user_data import migrate_legacy_data_for_user
 from email_service import (
     send_invitation_email,
     send_password_email,
@@ -314,6 +315,13 @@ def page_change_password():
 
 def page_app():
     """Protected main app content."""
+    # One-time migration of legacy JSON data into per-user DB rows
+    _uid = st.session_state.get("user_id")
+    _migrated_key = f"_legacy_migrated_{_uid}"
+    if _uid and not st.session_state.get(_migrated_key):
+        migrate_legacy_data_for_user(_uid)
+        st.session_state[_migrated_key] = True
+
     # Session expiry warning (show 30 min before expiry)
     st.sidebar.markdown(f"👤 **{st.session_state.get('email', 'User')}**")
     if st.sidebar.button("🚪 Sign Out"):
