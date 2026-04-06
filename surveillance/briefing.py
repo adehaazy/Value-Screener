@@ -44,36 +44,51 @@ def _build_macro_section(macro_us: dict, macro_uk: dict) -> dict:
     def _val(series_dict, key):
         return (series_dict.get(key) or {}).get("value")
 
-    ffr      = _val(us_series, "DFF")
-    dgs10    = _val(us_series, "DGS10")
-    dgs2     = _val(us_series, "DGS2")
-    t10y2y   = _val(us_series, "T10Y2Y")
-    vix      = _val(us_series, "VIXCLS")
-    hy       = _val(us_series, "BAMLH0A0HYM2")
-    boe      = _val(uk_series, "BOE_BASE")
-    gilt10   = _val(uk_series, "GILT_10Y")
+    ffr    = _val(us_series, "DFF")
+    dgs10  = _val(us_series, "DGS10")
+    dgs2   = _val(us_series, "DGS2")
+    t10y2y = _val(us_series, "T10Y2Y")
+    vix    = _val(us_series, "VIXCLS")
+    hy     = _val(us_series, "BAMLH0A0HYM2")
+    boe    = _val(uk_series, "BOE_BASE")
+    gilt10 = _val(uk_series, "GILT_10Y")
+    oil    = _val(us_series, "WTI_OIL")
+    gold   = _val(us_series, "GOLD")
 
-    # Narrative headline
-    curve_status = "inverted" if (t10y2y is not None and t10y2y < 0) else "normal"
-    vix_status   = "elevated" if (vix is not None and vix > 25) else "calm" if (vix is not None and vix < 15) else "moderate"
+    # Use pre-formatted metrics list from sources.py if available (includes commodities)
+    if macro_us.get("metrics_formatted"):
+        lines = list(macro_us["metrics_formatted"])
+    else:
+        curve_status = "inverted" if (t10y2y is not None and t10y2y < 0) else "normal"
+        vix_status   = "elevated" if (vix is not None and vix > 25) else "calm" if (vix is not None and vix < 15) else "moderate"
+        lines = []
+        if ffr is not None:
+            lines.append(f"Fed Funds: {_rate(ffr)}")
+        if dgs10 is not None and dgs2 is not None:
+            lines.append(f"US Treasuries: 2Y {_rate(dgs2)} / 10Y {_rate(dgs10)} (curve {curve_status})")
+        elif dgs10 is not None:
+            lines.append(f"US 10Y Treasury: {_rate(dgs10)}")
+        if vix is not None:
+            lines.append(f"VIX: {vix:.1f} ({vix_status} volatility)")
+        if hy is not None:
+            lines.append(f"HY Credit Spread: {hy:.0f}bps")
+        if oil is not None:
+            lines.append(f"WTI Crude: ${oil:.2f}/bbl")
+        if gold is not None:
+            lines.append(f"Gold: ${gold:,.0f}/oz")
 
-    lines = []
-    if ffr is not None:
-        lines.append(f"Fed Funds: {_rate(ffr)}")
-    if dgs10 is not None and dgs2 is not None:
-        lines.append(f"US Treasuries: 2Y {_rate(dgs2)} / 10Y {_rate(dgs10)} (curve {curve_status})")
-    if vix is not None:
-        lines.append(f"VIX: {vix:.1f} ({vix_status} volatility)")
-    if hy is not None:
-        lines.append(f"HY Credit Spread: {hy:.0f}bps")
+    # Append UK metrics
     if boe is not None:
         lines.append(f"BoE Base Rate: {_rate(boe)}")
     if gilt10 is not None:
         lines.append(f"UK 10Y Gilt: {_rate(gilt10)}")
 
-    # Overall macro tone
-    warnings = len(macro_us.get("signals", [])) + len(macro_uk.get("signals", []))
-    if warnings >= 3:
+    # Overall macro tone — factor in commodity stress too
+    all_signals  = macro_us.get("signals", []) + macro_uk.get("signals", [])
+    high_signals = [s for s in all_signals if s.get("severity") == "high"]
+    warnings = len(all_signals)
+
+    if len(high_signals) >= 2 or warnings >= 4:
         tone = "cautious"
         tone_detail = "Multiple macro stress indicators active. Consider quality bias and cash weighting."
     elif warnings >= 1:

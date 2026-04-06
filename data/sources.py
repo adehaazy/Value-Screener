@@ -109,9 +109,100 @@ def fetch_fred_series(series_id: str) -> float | None:
     return None
 
 
+def _yf_spot(ticker_sym: str) -> float | None:
+    """Fetch the latest closing price from yfinance. Returns None on failure."""
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker_sym)
+        hist = t.history(period="5d")
+        if hist is not None and not hist.empty:
+            return float(hist["Close"].iloc[-1])
+    except Exception:
+        pass
+    return None
+
+
+# yfinance tickers that proxy our FRED series when FRED is unavailable
+_YF_PROXIES = {
+    "DGS10":         "^TNX",     # US 10Y Treasury yield (×0.1 to get %)
+    "DGS2":          "^IRX",     # US 13-week bill (proxy for short end, ×0.1)
+    "VIXCLS":        "^VIX",     # CBOE VIX
+    "OIL":           "CL=F",     # WTI Crude front-month
+    "GOLD":          "GC=F",     # Gold front-month
+    "NATURAL_GAS":   "NG=F",     # Natural Gas front-month
+    "SP500":         "^GSPC",    # S&P 500
+    "FTSE100":       "^FTSE",    # FTSE 100
+    "DXY":           "DX-Y.NYB", # US Dollar Index
+}
+
+
+def _fetch_yf_macro() -> dict:
+    """
+    Pull macro data directly from yfinance market tickers.
+    Fast, reliable, covers commodities and indices FRED doesn't.
+    Returns a partial series dict using FRED-compatible keys where possible.
+    """
+    series: dict = {}
+
+    # Treasury yields — yfinance quotes TNX/IRX in percentage points ÷ 10
+    dgs10_raw = _yf_spot("^TNX")
+    if dgs10_raw is not None:
+        # ^TNX quotes as e.g. 42.5 meaning 4.25%
+        dgs10 = dgs10_raw / 10.0 if dgs10_raw > 10 else dgs10_raw
+        series["DGS10"] = {"name": "US 10Y Treasury Yield", "value": round(dgs10, 3), "unit": "%", "source": "yfinance"}
+
+    dgs2_raw = _yf_spot("^IRX")
+    if dgs2_raw is not None:
+        dgs2 = dgs2_raw / 10.0 if dgs2_raw > 10 else dgs2_raw
+        series["DGS2"] = {"name": "US 2Y Treasury Yield", "value": round(dgs2, 3), "unit": "%", "source": "yfinance"}
+
+    # Derived yield curve
+    if "DGS10" in series and "DGS2" in series:
+        t10 = series["DGS10"]["value"]
+        t2  = series["DGS2"]["value"]
+        if t10 is not None and t2 is not None:
+            series["T10Y2Y"] = {"name": "Yield Curve (10Y-2Y)", "value": round(t10 - t2, 3), "unit": "%", "source": "yfinance"}
+
+    # VIX
+    vix = _yf_spot("^VIX")
+    if vix is not None:
+        series["VIXCLS"] = {"name": "VIX (Fear Index)", "value": round(vix, 2), "unit": "pts", "source": "yfinance"}
+
+    # Commodities — important for current market context
+    oil = _yf_spot("CL=F")
+    if oil is not None:
+        series["WTI_OIL"] = {"name": "WTI Crude Oil", "value": round(oil, 2), "unit": "USD/bbl", "source": "yfinance"}
+
+    gold = _yf_spot("GC=F")
+    if gold is not None:
+        series["GOLD"] = {"name": "Gold", "value": round(gold, 2), "unit": "USD/oz", "source": "yfinance"}
+
+    natgas = _yf_spot("NG=F")
+    if natgas is not None:
+        series["NAT_GAS"] = {"name": "Natural Gas", "value": round(natgas, 3), "unit": "USD/MMBtu", "source": "yfinance"}
+
+    # Dollar index
+    dxy = _yf_spot("DX-Y.NYB")
+    if dxy is not None:
+        series["DXY"] = {"name": "US Dollar Index", "value": round(dxy, 2), "unit": "index", "source": "yfinance"}
+
+    # Key equity indices
+    sp500 = _yf_spot("^GSPC")
+    if sp500 is not None:
+        series["SP500"] = {"name": "S&P 500", "value": round(sp500, 2), "unit": "pts", "source": "yfinance"}
+
+    ftse = _yf_spot("^FTSE")
+    if ftse is not None:
+        series["FTSE100"] = {"name": "FTSE 100", "value": round(ftse, 2), "unit": "pts", "source": "yfinance"}
+
+    return series
+
+
 def get_macro_indicators(force: bool = False) -> dict:
     """
     Returns a dict of macro indicators.
+    Primary: FRED CSV API. Fallback: yfinance market tickers.
+    Also enriches with commodities (oil, gold, nat gas) and indices.
     Cached for 4 hours; set force=True to bypass cache.
     """
     key = "fred_macro"
@@ -121,19 +212,39 @@ def get_macro_indicators(force: bool = False) -> dict:
             return cached
 
     result = {
-        "source":    "FRED / Federal Reserve",
+        "source":    "FRED / yfinance",
         "fetched_at": datetime.now().isoformat(),
         "series":    {},
         "signals":   [],
     }
 
+    # ── Try FRED first ───────────────────────────────────────────────────────
+    fred_any = False
     for series_id, name, unit in FRED_SERIES:
         val = fetch_fred_series(series_id)
+        if val is not None:
+            fred_any = True
         result["series"][series_id] = {
             "name":  name,
             "value": val,
             "unit":  unit,
+            "source": "FRED",
         }
+
+    # ── yfinance fallback + enrichment (always run for commodities/indices) ──
+    yf_series = _fetch_yf_macro()
+    for key_yf, data in yf_series.items():
+        # Fill FRED gaps with yfinance data
+        existing = result["series"].get(key_yf)
+        if not existing or existing.get("value") is None:
+            result["series"][key_yf] = data
+        # Always add commodity/index series (not in FRED list)
+        elif key_yf not in {s[0] for s in FRED_SERIES}:
+            result["series"][key_yf] = data
+
+    # If FRED completely failed, mark source
+    if not fred_any:
+        result["source"] = "yfinance (FRED unavailable)"
 
     # Derive signals from raw values
     s = result["series"]
@@ -203,6 +314,72 @@ def get_macro_indicators(force: bool = False) -> dict:
                 "title":    "Inverted Rate Structure",
                 "detail":   f"10Y yield ({dgs10:.2f}%) below Fed Funds ({ffr:.2f}%). Favours short-duration assets.",
             })
+
+    # Commodity signals
+    oil = s.get("WTI_OIL", {}).get("value")
+    if oil is not None:
+        if oil > 90:
+            result["signals"].append({
+                "type":     "macro_warning",
+                "severity": "high" if oil > 100 else "medium",
+                "title":    f"Oil Price Elevated: ${oil:.0f}/bbl",
+                "detail":   f"WTI crude at ${oil:.2f}/bbl. Elevated energy costs pressure margins and stoke inflation. Watch energy sector and consumer discretionary.",
+            })
+        elif oil < 60:
+            result["signals"].append({
+                "type":     "macro_info",
+                "severity": "low",
+                "title":    f"Oil Price Weak: ${oil:.0f}/bbl",
+                "detail":   f"WTI crude at ${oil:.2f}/bbl. Low oil prices benefit consumers and transport sectors but may signal demand weakness.",
+            })
+
+    gold = s.get("GOLD", {}).get("value")
+    if gold is not None and gold > 2500:
+        result["signals"].append({
+            "type":     "macro_info",
+            "severity": "medium",
+            "title":    f"Gold at ${gold:,.0f} — Risk-Off Demand",
+            "detail":   f"Gold elevated at ${gold:,.2f}/oz, signalling risk-off positioning and inflation hedging. Often inversely correlated with real yields.",
+        })
+
+    natgas = s.get("NAT_GAS", {}).get("value")
+    if natgas is not None and natgas > 3.5:
+        result["signals"].append({
+            "type":     "macro_info",
+            "severity": "low",
+            "title":    f"Natural Gas Elevated: ${natgas:.2f}",
+            "detail":   f"Natural gas at ${natgas:.3f}/MMBtu. Higher energy costs weigh on European industrials and utilities.",
+        })
+
+    # Build formatted metrics list for briefing display
+    metrics = []
+    ffr_v = s.get("DFF", {}).get("value")
+    dgs2_v = s.get("DGS2", {}).get("value")
+    dgs10_v = s.get("DGS10", {}).get("value")
+    yc_v = s.get("T10Y2Y", {}).get("value")
+    vix_v = s.get("VIXCLS", {}).get("value")
+    hy_v = s.get("BAMLH0A0HYM2", {}).get("value")
+    oil_v = s.get("WTI_OIL", {}).get("value")
+    gold_v = s.get("GOLD", {}).get("value")
+
+    if ffr_v is not None:   metrics.append(f"Fed Funds: {ffr_v:.2f}%")
+    if dgs2_v is not None and dgs10_v is not None:
+        curve_lbl = "inverted" if (yc_v or 0) < 0 else "normal"
+        metrics.append(f"US Treasuries: 2Y {dgs2_v:.2f}% / 10Y {dgs10_v:.2f}% (curve {curve_lbl})")
+    elif dgs10_v is not None:
+        metrics.append(f"US 10Y Treasury: {dgs10_v:.2f}%")
+    if vix_v is not None:
+        vix_lbl = "elevated" if vix_v > 25 else "calm" if vix_v < 15 else "moderate"
+        metrics.append(f"VIX: {vix_v:.1f} ({vix_lbl} volatility)")
+    if hy_v is not None:    metrics.append(f"HY Credit Spread: {hy_v:.0f}bps")
+    if oil_v is not None:   metrics.append(f"WTI Crude: ${oil_v:.2f}/bbl")
+    if gold_v is not None:  metrics.append(f"Gold: ${gold_v:,.0f}/oz")
+    natgas_v = s.get("NAT_GAS", {}).get("value")
+    if natgas_v is not None: metrics.append(f"Natural Gas: ${natgas_v:.3f}/MMBtu")
+    dxy_v = s.get("DXY", {}).get("value")
+    if dxy_v is not None:   metrics.append(f"US Dollar Index: {dxy_v:.2f}")
+
+    result["metrics_formatted"] = metrics
 
     _save(key, result)
     return result
