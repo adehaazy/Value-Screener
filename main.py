@@ -1,19 +1,19 @@
 """
-main.py â FastAPI wrapper for the Value Screener application.
+main.py — FastAPI wrapper for the Value Screener application.
 
 Exposes the screener's core data as a JSON API so that any frontend
 (React, Next.js, mobile app, etc.) can consume it without touching Streamlit.
 
 Endpoints
 ---------
-GET    /api/screener          â scored instruments
-GET    /api/briefing          â AI/rule-based market briefing
-GET    /api/signals           â alerts & signal list
-GET    /api/watchlist         â user watchlist with live data
-GET    /api/macro             â macro indicator data (US + UK)
-GET    /api/portfolio         â holdings merged with live scored data + summary stats
-POST   /api/portfolio         â add or update a holding (upsert by ticker)
-DELETE /api/portfolio/{ticker} â remove a holding
+GET    /api/screener          — scored instruments
+GET    /api/briefing          — AI/rule-based market briefing
+GET    /api/signals           — alerts & signal list
+GET    /api/watchlist         — user watchlist with live data
+GET    /api/macro             — macro indicator data (US + UK)
+GET    /api/portfolio         — holdings merged with live scored data + summary stats
+POST   /api/portfolio         — add or update a holding (upsert by ticker)
+DELETE /api/portfolio/{ticker} — remove a holding
 
 Run
 ---
@@ -40,11 +40,11 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-# ââ Make sure the project root is on sys.path so local modules resolve âââââââââ
+# ── Make sure the project root is on sys.path so local modules resolve ─────────
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-# ââ Local imports (mirror what app.py uses) ââââââââââââââââââââââââââââââââââââ
+# ── Local imports (mirror what app.py uses) ────────────────────────────────────
 from data.universe import UNIVERSE
 from data.fetcher import (
     fetch_one,
@@ -70,9 +70,9 @@ from user_data import (
 )
 from utils.signal_enricher import get_macro_context, get_uk_macro_context
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 # App setup
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 
 app = FastAPI(
     title="Value Screener API",
@@ -80,7 +80,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS â allow all origins (tighten in production)
+# CORS — allow all origins (tighten in production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -90,9 +90,9 @@ app.add_middleware(
 )
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 # Helpers
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 
 def _safe_float(value: Any) -> Any:
     """Convert numpy floats / NaN / Inf to plain Python types for JSON safety."""
@@ -126,7 +126,7 @@ def _clean_record(record: dict) -> dict:
 
 def _build_from_cache() -> tuple[list[dict], dict] | None:
     """
-    Build a scored instrument list using ONLY cached data â no network calls.
+    Build a scored instrument list using ONLY cached data — no network calls.
     Returns (instruments, sector_medians) or None if the cache is completely empty.
     Fast: reads all rows from SQLite in a single query.
     """
@@ -155,7 +155,7 @@ def _build_from_cache() -> tuple[list[dict], dict] | None:
     return enriched, sector_medians
 
 
-# Background refresh state â prevents concurrent full-universe fetches
+# Background refresh state — prevents concurrent full-universe fetches
 _refresh_lock = threading.Lock()
 _refresh_in_progress = False
 
@@ -213,9 +213,9 @@ def _build_instruments(force_refresh: bool = False) -> tuple[list[dict], dict]:
     return enriched, sector_medians
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 # Routes
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/screener", summary="Scored instrument list")
 def get_screener(background_tasks: BackgroundTasks, refresh: bool = False) -> dict:
@@ -223,9 +223,9 @@ def get_screener(background_tasks: BackgroundTasks, refresh: bool = False) -> di
     Returns all instruments in UNIVERSE, scored and enriched with verdicts.
 
     Strategy: cache-first, background-refresh.
-      1. Try to serve from SQLite cache immediately (fast â <1s).
+      1. Try to serve from SQLite cache immediately (fast — <1s).
       2. If cache is empty OR refresh=true is requested, do a full live fetch
-         (slow â can take several minutes for 648 tickers on first deploy).
+         (slow — can take several minutes for 648 tickers on first deploy).
       3. If cache has partial data, serve it immediately and kick off a
          background refresh so future requests will have fresh data.
 
@@ -256,7 +256,7 @@ def get_screener(background_tasks: BackgroundTasks, refresh: bool = False) -> di
             return {"ok": True, "count": len(clean), "from_cache": True,
                     "sector_medians": _clean_record(sector_medians), "instruments": clean}
 
-        # Cache is empty (fresh deploy) â must do a full live fetch.
+        # Cache is empty (fresh deploy) — must do a full live fetch.
         # This is the slow path; it only happens once after a fresh deploy.
         instruments, sector_medians = _build_instruments(force_refresh=False)
         clean = [_clean_record(i) for i in instruments]
@@ -294,7 +294,7 @@ def get_signals() -> dict:
     """
     Returns the current signals list, including score drift, value opportunities,
     macro stress, news alerts, insider activity, and SEC 8-K filings.
-    Loaded from cache/signals_history.json â run a scan to refresh.
+    Loaded from cache/signals_history.json — run a scan to refresh.
     """
     try:
         signals = load_latest_signals()
@@ -329,32 +329,41 @@ def get_watchlist() -> dict:
         if not watchlist_tickers:
             return {"ok": True, "tickers": [], "count": 0, "instruments": []}
 
-        # Build a lookup from the full scored universe
-        cached = _build_from_cache()
-        if cached:
-            instruments, sector_medians = cached
-        else:
-            instruments, sector_medians = _build_instruments()
-        universe_map: dict[str, dict] = {inst["ticker"]: inst for inst in instruments}
+        # Build a universe ticker→meta lookup from UNIVERSE (no fetching)
+        universe_meta: dict[str, tuple[str, str, str]] = {}  # ticker → (name, asset_class, group)
+        for group, meta in UNIVERSE.items():
+            asset_class = meta.get("asset_class", "Stock")
+            for ticker, name in meta["tickers"].items():
+                universe_meta[ticker] = (name, asset_class, group)
 
-        result: list[dict] = []
+        # Fetch only the watchlist tickers — from cache where possible
+        raw: list[dict] = []
         for ticker in watchlist_tickers:
-            if ticker in universe_map:
-                result.append(universe_map[ticker])
-            else:
-                # Ticker is on the watchlist but not in UNIVERSE â fetch directly
-                live = fetch_one(ticker, ticker, "Stock", "Watchlist")
-                if live.get("ok"):
-                    scored_list = score_all([live], {})
-                    enriched = add_verdicts(scored_list, {})
-                    inst = enriched[0] if enriched else live
-                    score = inst.get("score")
-                    if score is not None:
-                        inst["score_label"] = score_label(score)
-                        inst["score_colour"] = score_colour(score)
-                    result.append(inst)
+            if ticker in universe_meta:
+                name, asset_class, group = universe_meta[ticker]
+                inst = _load_cache(ticker)
+                if inst:
+                    inst.setdefault("name", name)
+                    inst.setdefault("asset_class", asset_class)
+                    inst.setdefault("group", group)
+                    raw.append(inst)
                 else:
-                    result.append(live)  # return the error record so caller knows
+                    # Cache miss — fetch live for this one ticker only
+                    raw.append(fetch_one(ticker, name, asset_class, group))
+            else:
+                # Not in UNIVERSE — fetch live
+                raw.append(fetch_one(ticker, ticker, "Stock", "Watchlist"))
+
+        # Score only the watchlist instruments
+        sector_medians = compute_sector_medians(raw)
+        scored = score_all(raw, sector_medians)
+        result_list = add_verdicts(scored, sector_medians)
+        for inst in result_list:
+            sc = inst.get("score")
+            if sc is not None:
+                inst["score_label"] = score_label(sc)
+                inst["score_colour"] = score_colour(sc)
+        result = result_list
 
         clean = [_clean_record(i) for i in result]
         return {
@@ -429,14 +438,14 @@ def get_macro() -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-# Portfolio â request body model
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
+# Portfolio — request body model
+# ══════════════════════════════════════════════════════════════════════════════
 
 class HoldingIn(BaseModel):
     """
     Fields the client supplies when adding or updating a holding.
-    All fields except ticker, shares, and avg_cost are optional â the
+    All fields except ticker, shares, and avg_cost are optional — the
     endpoint will preserve existing values for fields not supplied on update.
     """
     ticker:        str   = Field(..., description="Yahoo Finance ticker, e.g. AAPL or BP.L")
@@ -444,13 +453,13 @@ class HoldingIn(BaseModel):
     avg_cost:      float = Field(..., gt=0, description="Average cost basis per share in `currency`")
     currency:      str   = Field("USD",  description="ISO-4217 currency of avg_cost, e.g. USD, GBP, EUR")
     account:       Optional[str]   = Field(None, description="Account label, e.g. ISA, SIPP, IRA, Trading")
-    notes:         Optional[str]   = Field(None, description="Free-text notes â the investment thesis, reminders, etc.")
+    notes:         Optional[str]   = Field(None, description="Free-text notes — the investment thesis, reminders, etc.")
     target_weight: Optional[float] = Field(None, ge=0, le=100, description="Target portfolio weight %; enables drift alerting")
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-# Portfolio â helpers
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
+# Portfolio — helpers
+# ══════════════════════════════════════════════════════════════════════════════
 
 def _enrich_holding(h: dict, universe_map: dict[str, dict]) -> dict:
     """
@@ -461,7 +470,7 @@ def _enrich_holding(h: dict, universe_map: dict[str, dict]) -> dict:
     shares   = float(h.get("shares",   0) or 0)
     avg_cost = float(h.get("avg_cost", 0) or 0)
 
-    # Resolve instrument â prefer universe cache, fall back to live fetch
+    # Resolve instrument — prefer universe cache, fall back to live fetch
     if ticker in universe_map:
         inst = dict(universe_map[ticker])
     else:
@@ -498,14 +507,14 @@ def _enrich_holding(h: dict, universe_map: dict[str, dict]) -> dict:
         "gain":          round(gain,         2),
         "gain_pct":      round(gain_pct,     4),
         "weight":        0.0,   # filled in second pass by caller
-        # Full scored instrument record (price, P/E, score, verdict, â¦)
+        # Full scored instrument record (price, P/E, score, verdict, …)
         "instrument":    _clean_record(inst),
     }
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-# Portfolio â routes
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
+# Portfolio — routes
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/portfolio", summary="Portfolio holdings with live scored data")
 def get_portfolio() -> dict:
@@ -516,8 +525,8 @@ def get_portfolio() -> dict:
 
     - **User-supplied**: ticker, shares, avg_cost, currency, account, notes, target_weight
     - **Server-computed**: market_value, cost_basis, gain, gain_pct, weight (% of total)
-    - **Live instrument data**: full scored record â price, P/E, P/B, div_yield, score,
-      score_label, verdict, sector, signals, badges, â¦
+    - **Live instrument data**: full scored record — price, P/E, P/B, div_yield, score,
+      score_label, verdict, sector, signals, badges, …
 
     A top-level `summary` object gives portfolio-wide totals.
 
@@ -525,7 +534,7 @@ def get_portfolio() -> dict:
     Holdings not in UNIVERSE are fetched and scored on the fly.
 
     The `weight_drift` field on each holding is populated when the user has set a
-    `target_weight` â positive means the position is over-weight, negative under-weight.
+    `target_weight` — positive means the position is over-weight, negative under-weight.
     """
     try:
         raw_holdings: list[dict] = load_holdings(user_id=None)
@@ -543,11 +552,11 @@ def get_portfolio() -> dict:
                 },
             }
 
-        # Build scored universe lookup (uses cache â fast path)
+        # Build scored universe lookup (uses cache — fast path)
         instruments, _medians = _build_instruments(force_refresh=False)
         universe_map: dict[str, dict] = {inst["ticker"]: inst for inst in instruments}
 
-        # First pass â enrich each holding and accumulate totals
+        # First pass — enrich each holding and accumulate totals
         enriched: list[dict] = []
         total_value = 0.0
         total_cost  = 0.0
@@ -561,7 +570,7 @@ def get_portfolio() -> dict:
         total_gain     = total_value - total_cost
         total_gain_pct = (total_gain / total_cost * 100) if total_cost else 0.0
 
-        # Second pass â fill actual weight and weight_drift
+        # Second pass — fill actual weight and weight_drift
         for record in enriched:
             actual_weight = (record["market_value"] / total_value * 100) if total_value else 0.0
             record["weight"] = round(actual_weight, 2)
@@ -589,7 +598,7 @@ def upsert_holding(body: HoldingIn) -> dict:
     Add a new holding or update an existing one (upsert by ticker).
 
     If the ticker is already in the portfolio the existing record is replaced
-    in full â pass all fields you want to keep, not just the ones that changed.
+    in full — pass all fields you want to keep, not just the ones that changed.
 
     Returns the updated portfolio summary so the UI can refresh without a
     second GET request.
@@ -640,18 +649,18 @@ def delete_holding(ticker: str) -> dict:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 # Health check
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/health", include_in_schema=False)
 def health() -> dict:
     return {"status": "ok", "cache_populated": any_cache_exists()}
 
 
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 # Dev entrypoint
-# ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     import uvicorn
