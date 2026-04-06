@@ -34,12 +34,14 @@ from __future__ import annotations
 
 import os
 import sys
+import json
+import datetime
 from pathlib import Path
 from typing import Any, Optional
 
 import threading
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -109,6 +111,126 @@ def _safe_float(value: Any) -> Any:
         return value
     except Exception:
         return value
+
+
+# ── Persistent cache file paths ───────────────────────────────────────────────
+_CACHE_DIR       = ROOT / "cache"
+_THESIS_CACHE    = _CACHE_DIR / "thesis_cache.json"
+_RATE_LIMIT_FILE = _CACHE_DIR / "thesis_rate.json"
+_DIVIDEND_CACHE  = _CACHE_DIR / "dividend_cache.json"
+
+_THESIS_TTL_DAYS   = 7
+_DIVIDEND_TTL_DAYS = 30
+_THESIS_DAILY_LIMIT = 5
+
+_json_lock = threading.Lock()
+
+
+def _read_json(path: Path) -> dict:
+    """Read a JSON file; return {} on missing or corrupt."""
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _write_json(path: Path, data: dict) -> None:
+    """Atomically write data to a JSON file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+# ── Thesis cache ───────────────────────────────────────────────────────────────
+
+def _thesis_cache_get(ticker: str) -> str | None:
+    """Return cached thesis if it exists and is < THESIS_TTL_DAYS old, else None."""
+    with _json_lock:
+        store = _read_json(_THESIS_CACHE)
+    entry = store.get(ticker.upper())
+    if not entry:
+        return None
+    try:
+        age = (datetime.datetime.utcnow() - datetime.datetime.fromisoformat(entry["generated_at"])).days
+        if age < _THESIS_TTL_DAYS:
+            return entry["thesis"]
+    except Exception:
+        pass
+    return None
+
+
+def _thesis_cache_set(ticker: str, thesis: str) -> None:
+    """Persist a thesis to the cache."""
+    with _json_lock:
+        store = _read_json(_THESIS_CACHE)
+        store[ticker.upper()] = {
+            "thesis":       thesis,
+            "generated_at": datetime.datetime.utcnow().isoformat(),
+        }
+        _write_json(_THESIS_CACHE, store)
+
+
+# ── Rate limiter ───────────────────────────────────────────────────────────────
+
+def _rate_limit_check(ip: str) -> tuple[bool, int]:
+    """
+    Returns (allowed, calls_remaining_today).
+    Counts calls made by `ip` today (UTC date).
+    Limit resets at midnight UTC.
+    """
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    with _json_lock:
+        store = _read_json(_RATE_LIMIT_FILE)
+    record = store.get(ip, {})
+    if record.get("date") != today:
+        record = {"date": today, "count": 0}
+    count = record.get("count", 0)
+    return count < _THESIS_DAILY_LIMIT, max(0, _THESIS_DAILY_LIMIT - count)
+
+
+def _rate_limit_increment(ip: str) -> None:
+    """Record one thesis generation for `ip` today."""
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    with _json_lock:
+        store = _read_json(_RATE_LIMIT_FILE)
+        record = store.get(ip, {})
+        if record.get("date") != today:
+            record = {"date": today, "count": 0}
+        record["count"] = record.get("count", 0) + 1
+        store[ip] = record
+        _write_json(_RATE_LIMIT_FILE, store)
+
+
+# ── Dividend cache ─────────────────────────────────────────────────────────────
+
+def _dividend_cache_get(ticker: str) -> dict | None:
+    """Return cached dividend data if < DIVIDEND_TTL_DAYS old, else None."""
+    with _json_lock:
+        store = _read_json(_DIVIDEND_CACHE)
+    entry = store.get(ticker.upper())
+    if not entry:
+        return None
+    try:
+        age = (datetime.datetime.utcnow() - datetime.datetime.fromisoformat(entry["generated_at"])).days
+        if age < _DIVIDEND_TTL_DAYS:
+            return entry
+    except Exception:
+        pass
+    return None
+
+
+def _dividend_cache_set(ticker: str, data: dict) -> None:
+    """Persist dividend data for a ticker."""
+    with _json_lock:
+        store = _read_json(_DIVIDEND_CACHE)
+        store[ticker.upper()] = {
+            **data,
+            "generated_at": datetime.datetime.utcnow().isoformat(),
+        }
+        _write_json(_DIVIDEND_CACHE, store)
 
 
 def _clean_record(record: dict) -> dict:
@@ -587,20 +709,22 @@ Be specific, use the numbers provided, and cite your reasoning. Do not use bulle
 
 @app.get("/api/deepdive", summary="Full instrument record + AI investment thesis")
 def get_deepdive(
+    request: Request,
     ticker: str = Query(..., description="Yahoo Finance ticker, e.g. ABF.L"),
 ) -> dict:
     """
     Returns scored instrument data for a single ticker, plus an AI-generated
     investment thesis written in the style of a senior equity analyst.
 
-    The thesis is generated fresh on each call using Claude (claude-opus-4-6).
-    Instrument data is served from cache where possible.
+    Thesis generation is rate-limited to 5 calls per IP per day (resets midnight UTC).
+    Generated theses are cached server-side for 7 days — subsequent loads of the
+    same ticker serve the cached version instantly at no API cost.
+    Instrument data is served from SQLite cache where possible.
     """
     try:
         ticker = ticker.upper().strip()
 
         # ── 1. Resolve instrument data ──────────────────────────────────────
-        # Look up in UNIVERSE first (fast cache path)
         universe_meta: dict[str, tuple[str, str, str]] = {}
         for group, meta in UNIVERSE.items():
             ac = meta.get("asset_class", "Stock")
@@ -633,20 +757,287 @@ def get_deepdive(
             inst["score_label"]  = score_label(sc)
             inst["score_colour"] = score_colour(sc)
 
-        # ── 3. Generate AI thesis ───────────────────────────────────────────
-        try:
-            briefing = load_briefing()
-        except Exception:
-            briefing = None
+        # ── 3. Thesis — cache-first, rate-limit on generation ───────────────
+        cached_thesis = _thesis_cache_get(ticker)
+        thesis_from_cache = cached_thesis is not None
+        thesis_cached_at  = None
 
-        thesis = _generate_thesis(inst, briefing)
+        if cached_thesis:
+            # Serve from cache — no API call, no rate-limit deduction
+            thesis = cached_thesis
+            with _json_lock:
+                store = _read_json(_THESIS_CACHE)
+            entry = store.get(ticker, {})
+            thesis_cached_at = entry.get("generated_at")
+        else:
+            # Need to generate — check rate limit first
+            client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
+            client_ip = client_ip.split(",")[0].strip()  # handle proxy chains
+
+            allowed, remaining = _rate_limit_check(client_ip)
+            if not allowed:
+                # Return instrument data but signal rate limit on thesis
+                return {
+                    "ok":               True,
+                    "ticker":           ticker,
+                    "instrument":       _clean_record(inst),
+                    "thesis":           None,
+                    "thesis_from_cache": False,
+                    "rate_limited":     True,
+                    "rate_limit_reset": "midnight UTC",
+                    "calls_remaining":  0,
+                }
+
+            try:
+                briefing = load_briefing()
+            except Exception:
+                briefing = None
+
+            thesis = _generate_thesis(inst, briefing)
+            _rate_limit_increment(client_ip)
+            _thesis_cache_set(ticker, thesis)
+
+            # Recompute remaining after increment
+            _, remaining = _rate_limit_check(client_ip)
 
         return {
-            "ok":      True,
-            "ticker":  ticker,
-            "instrument": _clean_record(inst),
-            "thesis":  thesis,
+            "ok":               True,
+            "ticker":           ticker,
+            "instrument":       _clean_record(inst),
+            "thesis":           thesis,
+            "thesis_from_cache": thesis_from_cache,
+            "thesis_cached_at":  thesis_cached_at,
+            "rate_limited":     False,
+            "calls_remaining":  _THESIS_DAILY_LIMIT if thesis_from_cache else (
+                _rate_limit_check(
+                    (request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown") or "").split(",")[0].strip()
+                )[1]
+            ),
         }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+def _fetch_dividend_data(ticker: str, inst: dict) -> dict:
+    """
+    Fetch dividend data from yfinance (already in instrument cache) and
+    enrich with publicly available data. Returns a structured dict.
+    """
+    try:
+        import yfinance as yf
+    except ImportError:
+        yf = None
+
+    currency = (inst.get("currency") or "").upper()
+    sym = "£" if currency in ("GBP", "GBX") else "$" if currency == "USD" else "€" if currency == "EUR" else ""
+
+    # ── Pull what we already have from the scored instrument ──────────────────
+    div_yield   = inst.get("div_yield")        # already normalised to %
+    payout_ratio = inst.get("payout_ratio")    # decimal (0–1) or None
+    roe         = inst.get("roe")
+    revenue     = inst.get("revenue")
+
+    # ── Pull richer dividend data from yfinance ───────────────────────────────
+    history_rows: list[dict] = []
+    dividends_per_year = None
+    last_dividend_value = None
+    last_ex_date = None
+    five_year_avg_yield = None
+    dividend_growth_3y = None
+
+    try:
+        if yf:
+            t = yf.Ticker(ticker)
+            info = t.fast_info if hasattr(t, "fast_info") else {}
+
+            # Dividend history
+            divs = t.dividends
+            if divs is not None and not divs.empty:
+                # Last 5 years of quarterly/annual history
+                recent = divs.tail(20)
+                history_rows = [
+                    {"date": str(idx.date()), "amount": round(float(v), 6)}
+                    for idx, v in recent.items()
+                ]
+                last_dividend_value = round(float(divs.iloc[-1]), 6) if len(divs) > 0 else None
+                last_ex_date = str(divs.index[-1].date()) if len(divs) > 0 else None
+
+                # Payments per year (approximate from last 2 years)
+                recent_2y = divs[divs.index >= (divs.index[-1] - datetime.timedelta(days=730))]
+                dividends_per_year = round(len(recent_2y) / 2) if len(recent_2y) >= 2 else None
+
+                # 3-year dividend growth (CAGR)
+                if len(history_rows) >= 4:
+                    try:
+                        annual = {}
+                        for row in history_rows:
+                            yr = row["date"][:4]
+                            annual[yr] = annual.get(yr, 0) + row["amount"]
+                        years = sorted(annual.keys())
+                        if len(years) >= 3:
+                            start_val = annual[years[-3]]
+                            end_val   = annual[years[-1]]
+                            if start_val > 0 and end_val > 0:
+                                dividend_growth_3y = round(((end_val / start_val) ** (1 / 2) - 1) * 100, 1)
+                    except Exception:
+                        pass
+
+            # 5-year average yield from yfinance info
+            try:
+                raw_info = t.info
+                five_year_avg_yield = raw_info.get("fiveYearAvgDividendYield")
+                if five_year_avg_yield and five_year_avg_yield < 1.0:
+                    five_year_avg_yield = round(five_year_avg_yield * 100, 2)
+                elif five_year_avg_yield:
+                    five_year_avg_yield = round(float(five_year_avg_yield), 2)
+                payout_ratio = payout_ratio or raw_info.get("payoutRatio")
+            except Exception:
+                pass
+
+    except Exception:
+        pass
+
+    freq_label = {1: "Annual", 2: "Semi-annual", 4: "Quarterly", 12: "Monthly"}.get(
+        dividends_per_year, f"~{dividends_per_year}x/year" if dividends_per_year else "Unknown"
+    )
+
+    return {
+        "ticker":               ticker,
+        "currency":             currency,
+        "symbol":               sym,
+        "div_yield":            div_yield,
+        "five_year_avg_yield":  five_year_avg_yield,
+        "last_dividend":        last_dividend_value,
+        "last_ex_date":         last_ex_date,
+        "payment_frequency":    freq_label,
+        "dividends_per_year":   dividends_per_year,
+        "payout_ratio":         round(float(payout_ratio) * 100, 1) if payout_ratio else None,
+        "dividend_growth_3y":   dividend_growth_3y,
+        "history":              history_rows,
+        "roe":                  round(float(roe) * 100, 1) if roe else None,
+    }
+
+
+def _generate_dividend_summary(ticker: str, div_data: dict, inst: dict) -> str:
+    """
+    Generate an AI dividend analysis using Claude.
+    Falls back to a data-driven template if API key is absent or call fails.
+    """
+    try:
+        import anthropic as _ant
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set")
+
+        client = _ant.Anthropic(api_key=api_key)
+        name = inst.get("name", ticker)
+        sector = inst.get("sector", "Unknown")
+
+        def _fmt(v, suffix="", decimals=1):
+            if v is None: return "N/A"
+            return f"{v:.{decimals}f}{suffix}"
+
+        prompt = f"""You are a senior equity income analyst. Write a concise dividend analysis for {name} ({ticker}).
+
+Company: {name} | Sector: {sector}
+
+Dividend Data:
+- Current Yield: {_fmt(div_data.get('div_yield'), '%')}
+- 5-Year Average Yield: {_fmt(div_data.get('five_year_avg_yield'), '%')}
+- Payment Frequency: {div_data.get('payment_frequency', 'N/A')}
+- Last Dividend Amount: {div_data.get('symbol', '')}{_fmt(div_data.get('last_dividend'), decimals=4)}
+- Last Ex-Dividend Date: {div_data.get('last_ex_date', 'N/A')}
+- Payout Ratio: {_fmt(div_data.get('payout_ratio'), '%')}
+- 3-Year Dividend CAGR: {_fmt(div_data.get('dividend_growth_3y'), '%')}
+- Return on Equity: {_fmt(div_data.get('roe'), '%')}
+
+Write 2–3 paragraphs covering:
+1. Income characteristics — is this a reliable income stock? How does the yield compare to sector norms?
+2. Dividend sustainability — payout ratio, earnings cover, balance sheet capacity
+3. Growth outlook — is the dividend likely to grow, hold, or be at risk?
+
+Be specific, reference the numbers, write in flowing prose (no bullet points or headers).
+Keep it under 250 words. Use the tone of a senior portfolio manager advising a client."""
+
+        message = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip()
+
+    except Exception:
+        # Deterministic fallback
+        name  = inst.get("name", ticker)
+        dy    = div_data.get("div_yield")
+        pr    = div_data.get("payout_ratio")
+        g3y   = div_data.get("dividend_growth_3y")
+        freq  = div_data.get("payment_frequency", "unknown frequency")
+        parts = []
+        if dy is not None:
+            parts.append(f"{name} currently offers a dividend yield of {dy:.2f}%, paid at {freq}.")
+        if pr is not None:
+            sustainability = "comfortably covered" if pr < 60 else "relatively stretched" if pr > 85 else "broadly sustainable"
+            parts.append(f"The payout ratio of {pr:.1f}% appears {sustainability}.")
+        if g3y is not None:
+            direction = "grown" if g3y > 0 else "declined"
+            parts.append(f"The dividend has {direction} at a {abs(g3y):.1f}% CAGR over the past 3 years.")
+        if not parts:
+            parts.append(f"Dividend data for {name} is limited. Review the latest annual report for income details.")
+        return " ".join(parts)
+
+
+@app.get("/api/dividends", summary="Dividend data and AI income analysis")
+def get_dividends(
+    ticker: str = Query(..., description="Yahoo Finance ticker, e.g. ABF.L"),
+) -> dict:
+    """
+    Returns structured dividend data plus an AI-generated income analysis.
+
+    Data sourced from yfinance (dividend history, yield, payout ratio, frequency).
+    Results are cached for 30 days — dividend policy rarely changes mid-year.
+    AI analysis uses claude-opus-4-6; does NOT count against the thesis rate limit.
+    """
+    try:
+        ticker = ticker.upper().strip()
+
+        # ── 1. Check cache ──────────────────────────────────────────────────
+        cached = _dividend_cache_get(ticker)
+        if cached:
+            return {"ok": True, "ticker": ticker, "from_cache": True, **cached}
+
+        # ── 2. Load instrument data (for sector/currency context) ────────────
+        universe_meta: dict[str, tuple[str, str, str]] = {}
+        for group, meta in UNIVERSE.items():
+            ac = meta.get("asset_class", "Stock")
+            for t, n in meta["tickers"].items():
+                universe_meta[t] = (n, ac, group)
+
+        if ticker in universe_meta:
+            name, asset_class, group = universe_meta[ticker]
+            inst = _load_cache(ticker) or fetch_one(ticker, name, asset_class, group)
+            if inst:
+                inst.setdefault("name", name)
+        else:
+            inst = fetch_one(ticker, ticker, "Stock", "Dividends")
+
+        if not inst or not inst.get("ok"):
+            raise HTTPException(status_code=404, detail=f"No data found for {ticker}")
+
+        # ── 3. Fetch structured dividend data ────────────────────────────────
+        div_data = _fetch_dividend_data(ticker, inst)
+
+        # ── 4. Generate AI summary ───────────────────────────────────────────
+        summary = _generate_dividend_summary(ticker, div_data, inst)
+        div_data["summary"] = summary
+
+        # ── 5. Cache and return ──────────────────────────────────────────────
+        _dividend_cache_set(ticker, div_data)
+
+        return {"ok": True, "ticker": ticker, "from_cache": False, **div_data}
+
     except HTTPException:
         raise
     except Exception as exc:
