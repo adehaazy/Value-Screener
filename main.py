@@ -61,7 +61,8 @@ from data.fetcher import (
 from utils.scoring import score_all, score_label, score_colour, DEFAULT_QUALITY_THRESHOLDS
 from utils.verdicts import add_verdicts
 from utils.signals import load_latest_signals, get_last_run_time, signals_summary
-from surveillance.briefing import load_briefing
+from surveillance.briefing import load_briefing, generate_briefing
+from data.sources import fetch_news, run_all_sources
 from user_data import (
     load_watchlist,
     save_watchlist,
@@ -395,8 +396,8 @@ def get_screener(background_tasks: BackgroundTasks, refresh: bool = False) -> di
 @app.get("/api/briefing", summary="Market briefing")
 def get_briefing() -> dict:
     """
-    Returns the most recently generated market briefing.
-    Produced by surveillance/briefing.py and persisted to disk.
+    Returns the most recently generated market briefing with staleness metadata.
+    Includes age_hours and stale flag (>4 hours) so the frontend can show a warning.
     """
     try:
         briefing = load_briefing()
@@ -405,10 +406,204 @@ def get_briefing() -> dict:
                 "ok": False,
                 "briefing": None,
                 "message": "No briefing generated yet. Run a surveillance scan first.",
+                "age_hours": None,
+                "stale": True,
             }
+
+        # Compute age
+        age_hours = None
+        stale = False
+        generated_at = briefing.get("generated_at")
+        if generated_at:
+            try:
+                gen_dt = datetime.datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+                if gen_dt.tzinfo is None:
+                    gen_dt = gen_dt.replace(tzinfo=datetime.timezone.utc)
+                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                age_hours = round((now_utc - gen_dt).total_seconds() / 3600, 1)
+                stale = age_hours > 4
+            except Exception:
+                pass
+
+        cleaned = _clean_record(briefing) if isinstance(briefing, dict) else briefing
         return {
-            "ok": True,
-            "briefing": _clean_record(briefing) if isinstance(briefing, dict) else briefing,
+            "ok":         True,
+            "briefing":   cleaned,
+            "age_hours":  age_hours,
+            "stale":      stale,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/briefing/refresh", summary="Lightweight briefing refresh")
+def refresh_briefing(background_tasks: BackgroundTasks) -> dict:
+    """
+    Triggers a fast briefing refresh: re-fetches macro data + RSS news +
+    Yahoo Finance watchlist news. Does NOT re-score the full universe.
+    Typically completes in 5–20 seconds. Results are persisted to
+    cache/briefing.json so the next GET /api/briefing serves fresh data.
+    """
+    try:
+        # Load watchlist tickers
+        from user_data import load_watchlist as _load_wl
+        wl_items = _load_wl(user_id=None)
+        watchlist_tickers = [
+            (i.get("ticker", i) if isinstance(i, dict) else i)
+            for i in wl_items
+        ]
+
+        # Use cached instruments (no full fetch) for the briefing
+        cached_result = _build_from_cache()
+        if cached_result:
+            instruments, _ = cached_result
+        else:
+            instruments = []
+
+        # Load signals from cache (don't re-run)
+        signals = load_latest_signals()
+
+        # Refresh surveillance data — macro + news only (fast path)
+        surveillance_data = run_all_sources(
+            tickers=watchlist_tickers,
+            force=True,
+        )
+
+        briefing = generate_briefing(
+            instruments=instruments,
+            signals=signals,
+            surveillance_data=surveillance_data,
+            watchlist=watchlist_tickers,
+        )
+
+        cleaned = _clean_record(briefing) if isinstance(briefing, dict) else briefing
+        return {
+            "ok":       True,
+            "briefing": cleaned,
+            "age_hours": 0,
+            "stale":    False,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/briefing/news", summary="Watchlist-prioritised news feed")
+def get_briefing_news(
+    tickers: str = Query("", description="Comma-separated watchlist tickers for prioritised headlines"),
+) -> dict:
+    """
+    Returns a news feed combining:
+    1. Yahoo Finance per-ticker news for watchlist instruments (prioritised)
+    2. General RSS headlines (Reuters, BBC, FT) as market context
+
+    Watchlist news is cached per-ticker for 1 hour.
+    General RSS news uses the existing surveillance cache (1 hour TTL).
+    """
+    try:
+        try:
+            import yfinance as yf
+        except ImportError:
+            yf = None
+
+        ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+
+        # ── 1. Yahoo Finance per-ticker news ─────────────────────────────────
+        _NEWS_CACHE_DIR = _CACHE_DIR / "yf_news"
+        _NEWS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _NEWS_TTL_HOURS = 1
+
+        watchlist_news: list[dict] = []
+
+        if yf and ticker_list:
+            for ticker in ticker_list:
+                cache_file = _NEWS_CACHE_DIR / f"{ticker}.json"
+                # Check cache freshness
+                use_cache = False
+                if cache_file.exists():
+                    age_h = (
+                        datetime.datetime.utcnow()
+                        - datetime.datetime.utcfromtimestamp(cache_file.stat().st_mtime)
+                    ).total_seconds() / 3600
+                    use_cache = age_h < _NEWS_TTL_HOURS
+
+                if use_cache:
+                    try:
+                        items = json.loads(cache_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        items = []
+                else:
+                    items = []
+                    try:
+                        t_obj = yf.Ticker(ticker)
+                        raw_news = t_obj.news or []
+                        for article in raw_news[:8]:
+                            content = article.get("content", {})
+                            # yfinance >=0.2.x wraps articles in a 'content' dict
+                            title = (
+                                content.get("title")
+                                or article.get("title", "")
+                            )
+                            link = (
+                                content.get("canonicalUrl", {}).get("url")
+                                or article.get("link", "")
+                            )
+                            publisher = (
+                                content.get("provider", {}).get("displayName")
+                                or article.get("publisher", "")
+                            )
+                            pub_time = (
+                                content.get("pubDate")
+                                or article.get("providerPublishTime")
+                            )
+                            if title:
+                                items.append({
+                                    "title":     title,
+                                    "link":      link,
+                                    "publisher": publisher,
+                                    "pub_time":  str(pub_time) if pub_time else None,
+                                    "ticker":    ticker,
+                                })
+                        cache_file.write_text(
+                            json.dumps(items, ensure_ascii=False, indent=2),
+                            encoding="utf-8",
+                        )
+                    except Exception:
+                        pass
+
+                for item in items:
+                    item["source_type"] = "watchlist"
+                    item.setdefault("ticker", ticker)
+                    watchlist_news.append(item)
+
+        # ── 2. General RSS headlines from existing surveillance cache ─────────
+        rss_news: list[dict] = []
+        try:
+            rss_data = fetch_news(tickers=ticker_list or None, force=False)
+            rss_items = rss_data.get("items", [])
+            # Sort by absolute sentiment, cap at 20
+            rss_items_sorted = sorted(
+                rss_items,
+                key=lambda x: abs(x.get("sentiment", 0)),
+                reverse=True,
+            )[:20]
+            for item in rss_items_sorted:
+                rss_news.append({
+                    "title":      item.get("title", ""),
+                    "link":       item.get("link", ""),
+                    "publisher":  item.get("feed", ""),
+                    "pub_time":   item.get("published", ""),
+                    "sentiment":  item.get("sentiment", 0),
+                    "source_type": "market",
+                    "ticker":     None,
+                })
+        except Exception:
+            pass
+
+        return {
+            "ok":             True,
+            "watchlist_news": watchlist_news,
+            "market_news":    rss_news,
+            "tickers":        ticker_list,
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
