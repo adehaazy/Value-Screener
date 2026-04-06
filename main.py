@@ -59,6 +59,9 @@ from utils.signals import load_latest_signals, get_last_run_time, signals_summar
 from surveillance.briefing import load_briefing
 from user_data import (
     load_watchlist,
+    save_watchlist,
+    add_to_watchlist as _add_to_watchlist,
+    remove_from_watchlist,
     load_prefs,
     load_holdings,
     save_holdings,
@@ -356,6 +359,49 @@ def get_watchlist() -> dict:
             "count": len(clean),
             "instruments": clean,
         }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/watchlist", summary="Add ticker to watchlist", status_code=200)
+def add_watchlist_item(body: dict) -> dict:
+    """
+    Add a ticker to the watchlist.
+    Body: { "ticker": "BP.L", "name": "BP plc" }
+    No-op if ticker is already present.
+    """
+    try:
+        ticker = (body.get("ticker") or "").upper().strip()
+        if not ticker:
+            raise HTTPException(status_code=422, detail="ticker is required")
+        name = body.get("name") or ticker
+        _add_to_watchlist(user_id=None, item={"ticker": ticker, "name": name})
+        return {"ok": True, "ticker": ticker, "action": "added"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.delete("/api/watchlist/{ticker}", summary="Remove ticker from watchlist")
+def delete_watchlist_item(ticker: str) -> dict:
+    """
+    Remove a ticker from the watchlist by ticker symbol.
+    Returns 404 if the ticker is not on the watchlist.
+    """
+    try:
+        ticker = ticker.upper().strip()
+        current = load_watchlist(user_id=None)
+        tickers = [
+            (i.get("ticker", i) if isinstance(i, dict) else i)
+            for i in current
+        ]
+        if ticker not in tickers:
+            raise HTTPException(status_code=404, detail=f"{ticker} not found in watchlist")
+        remove_from_watchlist(user_id=None, ticker=ticker)
+        return {"ok": True, "ticker": ticker, "action": "removed"}
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
