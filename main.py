@@ -1044,6 +1044,180 @@ def get_dividends(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@app.get("/api/analyses", summary="List all cached investment theses")
+def list_analyses() -> dict:
+    """
+    Returns all server-cached investment theses with metadata.
+    Includes ticker, company name (resolved from UNIVERSE), generated_at,
+    age in days, and a short excerpt of the thesis for display.
+    """
+    try:
+        with _json_lock:
+            store = _read_json(_THESIS_CACHE)
+
+        # Build universe name lookup
+        universe_meta: dict[str, tuple[str, str, str]] = {}
+        for group, meta in UNIVERSE.items():
+            ac = meta.get("asset_class", "Stock")
+            for t, n in meta["tickers"].items():
+                universe_meta[t] = (n, ac, group)
+
+        now = datetime.datetime.utcnow()
+        analyses = []
+        for ticker, entry in store.items():
+            generated_at = entry.get("generated_at")
+            thesis       = entry.get("thesis", "")
+            try:
+                age_days = (now - datetime.datetime.fromisoformat(generated_at)).days
+                expires_in = max(0, _THESIS_TTL_DAYS - age_days)
+            except Exception:
+                age_days   = None
+                expires_in = None
+
+            # Short excerpt — first sentence or first 200 chars
+            excerpt = ""
+            if thesis:
+                first_sentence = thesis.split(".")[0]
+                excerpt = (first_sentence[:200] + "…") if len(first_sentence) > 200 else first_sentence + "."
+
+            name_meta = universe_meta.get(ticker)
+            analyses.append({
+                "ticker":       ticker,
+                "name":         name_meta[0] if name_meta else ticker,
+                "sector":       None,   # resolved from cache below if available
+                "generated_at": generated_at,
+                "age_days":     age_days,
+                "expires_in":   expires_in,
+                "excerpt":      excerpt,
+            })
+
+        # Sort newest first
+        analyses.sort(key=lambda x: x.get("generated_at") or "", reverse=True)
+
+        # Enrich with sector from SQLite cache (best-effort)
+        for item in analyses:
+            try:
+                cached = _load_cache(item["ticker"])
+                if cached:
+                    item["sector"] = cached.get("sector")
+                    if not item.get("name") or item["name"] == item["ticker"]:
+                        item["name"] = cached.get("name", item["ticker"])
+            except Exception:
+                pass
+
+        return {"ok": True, "count": len(analyses), "analyses": analyses}
+
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.delete("/api/analyses/{ticker}", summary="Delete a cached investment thesis")
+def delete_analysis(ticker: str) -> dict:
+    """
+    Removes a ticker's cached thesis from the server cache.
+    Next time /api/deepdive is called for this ticker, a fresh thesis will be
+    generated (subject to the rate limit).
+    """
+    try:
+        ticker = ticker.upper().strip()
+        with _json_lock:
+            store = _read_json(_THESIS_CACHE)
+            if ticker not in store:
+                raise HTTPException(status_code=404, detail=f"No cached thesis for {ticker}")
+            del store[ticker]
+            _write_json(_THESIS_CACHE, store)
+        return {"ok": True, "ticker": ticker, "action": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/analyses/{ticker}/refresh", summary="Force-refresh a cached investment thesis")
+def refresh_analysis(request: Request, ticker: str) -> dict:
+    """
+    Deletes the existing cached thesis for `ticker` and regenerates it
+    immediately using a fresh Claude call.
+
+    This counts against the caller's daily rate limit (same as /api/deepdive).
+    Returns the full new thesis plus updated metadata.
+    """
+    try:
+        ticker = ticker.upper().strip()
+
+        # ── Rate limit check ──────────────────────────────────────────────────
+        client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
+        client_ip = client_ip.split(",")[0].strip()
+        allowed, remaining = _rate_limit_check(client_ip)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="Daily thesis generation limit reached. Resets at midnight UTC."
+            )
+
+        # ── Resolve instrument ────────────────────────────────────────────────
+        universe_meta: dict[str, tuple[str, str, str]] = {}
+        for group, meta in UNIVERSE.items():
+            ac = meta.get("asset_class", "Stock")
+            for t, n in meta["tickers"].items():
+                universe_meta[t] = (n, ac, group)
+
+        if ticker in universe_meta:
+            name, asset_class, group = universe_meta[ticker]
+            raw = _load_cache(ticker)
+            if raw:
+                raw.setdefault("name", name)
+                raw.setdefault("asset_class", asset_class)
+                raw.setdefault("group", group)
+            else:
+                raw = fetch_one(ticker, name, asset_class, group)
+        else:
+            raw = fetch_one(ticker, ticker, "Stock", "Analyses")
+
+        if not raw or not raw.get("ok"):
+            raise HTTPException(status_code=404, detail=f"No data found for {ticker}")
+
+        sector_medians = compute_sector_medians([raw])
+        scored         = score_all([raw], sector_medians)
+        enriched       = add_verdicts(scored, sector_medians)
+        inst           = enriched[0] if enriched else raw
+        sc = inst.get("score")
+        if sc is not None:
+            inst["score_label"]  = score_label(sc)
+            inst["score_colour"] = score_colour(sc)
+
+        # ── Delete old cache entry ────────────────────────────────────────────
+        with _json_lock:
+            store = _read_json(_THESIS_CACHE)
+            store.pop(ticker, None)
+            _write_json(_THESIS_CACHE, store)
+
+        # ── Generate fresh thesis ─────────────────────────────────────────────
+        try:
+            briefing = load_briefing()
+        except Exception:
+            briefing = None
+
+        new_thesis = _generate_thesis(inst, briefing)
+        _rate_limit_increment(client_ip)
+        _thesis_cache_set(ticker, new_thesis)
+
+        _, remaining_after = _rate_limit_check(client_ip)
+
+        return {
+            "ok":              True,
+            "ticker":          ticker,
+            "thesis":          new_thesis,
+            "generated_at":    datetime.datetime.utcnow().isoformat(),
+            "calls_remaining": remaining_after,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.get("/api/macro", summary="Macro indicator data")
 def get_macro() -> dict:
     """
