@@ -6,11 +6,14 @@ Exposes the screener's core data as a JSON API so that any frontend
 
 Endpoints
 ---------
-GET /api/screener   — scored instruments
-GET /api/briefing   — AI/rule-based market briefing
-GET /api/signals    — alerts & signal list
-GET /api/watchlist  — user watchlist with live data
-GET /api/macro      — macro indicator data (US + UK)
+GET    /api/screener          — scored instruments
+GET    /api/briefing          — AI/rule-based market briefing
+GET    /api/signals           — alerts & signal list
+GET    /api/watchlist         — user watchlist with live data
+GET    /api/macro             — macro indicator data (US + UK)
+GET    /api/portfolio         — holdings merged with live scored data + summary stats
+POST   /api/portfolio         — add or update a holding (upsert by ticker)
+DELETE /api/portfolio/{ticker} — remove a holding
 
 Run
 ---
@@ -29,10 +32,11 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 # ── Make sure the project root is on sys.path so local modules resolve ─────────
 ROOT = Path(__file__).parent
@@ -51,7 +55,14 @@ from utils.scoring import score_all, score_label, score_colour, DEFAULT_QUALITY_
 from utils.verdicts import add_verdicts
 from utils.signals import load_latest_signals, get_last_run_time, signals_summary
 from surveillance.briefing import load_briefing
-from user_data import load_watchlist, load_prefs
+from user_data import (
+    load_watchlist,
+    load_prefs,
+    load_holdings,
+    save_holdings,
+    add_to_holdings,
+    remove_from_holdings,
+)
 from utils.signal_enricher import get_macro_context, get_uk_macro_context
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -282,6 +293,217 @@ def get_macro() -> dict:
             "us": _clean_record(us_macro) if isinstance(us_macro, dict) else us_macro,
             "uk": _clean_record(uk_macro) if isinstance(uk_macro, dict) else uk_macro,
         }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Portfolio — request body model
+# ══════════════════════════════════════════════════════════════════════════════
+
+class HoldingIn(BaseModel):
+    """
+    Fields the client supplies when adding or updating a holding.
+    All fields except ticker, shares, and avg_cost are optional — the
+    endpoint will preserve existing values for fields not supplied on update.
+    """
+    ticker:        str   = Field(..., description="Yahoo Finance ticker, e.g. AAPL or BP.L")
+    shares:        float = Field(..., gt=0, description="Number of shares (fractional OK)")
+    avg_cost:      float = Field(..., gt=0, description="Average cost basis per share in `currency`")
+    currency:      str   = Field("USD",  description="ISO-4217 currency of avg_cost, e.g. USD, GBP, EUR")
+    account:       Optional[str]   = Field(None, description="Account label, e.g. ISA, SIPP, IRA, Trading")
+    notes:         Optional[str]   = Field(None, description="Free-text notes — the investment thesis, reminders, etc.")
+    target_weight: Optional[float] = Field(None, ge=0, le=100, description="Target portfolio weight %; enables drift alerting")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Portfolio — helpers
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _enrich_holding(h: dict, universe_map: dict[str, dict]) -> dict:
+    """
+    Merge a raw holdings record with live scored instrument data.
+    Returns a single enriched holding dict ready to be JSON-serialised.
+    """
+    ticker   = h.get("ticker", "")
+    shares   = float(h.get("shares",   0) or 0)
+    avg_cost = float(h.get("avg_cost", 0) or 0)
+
+    # Resolve instrument — prefer universe cache, fall back to live fetch
+    if ticker in universe_map:
+        inst = dict(universe_map[ticker])
+    else:
+        live = fetch_one(ticker, ticker, "Stock", "Portfolio")
+        if live.get("ok"):
+            scored   = score_all([live], {})
+            enriched = add_verdicts(scored, {})
+            inst     = enriched[0] if enriched else live
+            sc = inst.get("score")
+            if sc is not None:
+                inst["score_label"] = score_label(sc)
+                inst["score_colour"] = score_colour(sc)
+        else:
+            inst = live
+
+    current_price = float(inst.get("price") or 0)
+    market_value  = shares * current_price
+    cost_basis    = shares * avg_cost
+    gain          = market_value - cost_basis
+    gain_pct      = (gain / cost_basis * 100) if cost_basis else 0.0
+
+    return {
+        # User-supplied fields
+        "ticker":        ticker,
+        "shares":        shares,
+        "avg_cost":      avg_cost,
+        "currency":      h.get("currency",      "USD"),
+        "account":       h.get("account",       ""),
+        "notes":         h.get("notes",         ""),
+        "target_weight": h.get("target_weight", None),
+        # Server-computed P&L
+        "market_value":  round(market_value, 2),
+        "cost_basis":    round(cost_basis,   2),
+        "gain":          round(gain,         2),
+        "gain_pct":      round(gain_pct,     4),
+        "weight":        0.0,   # filled in second pass by caller
+        # Full scored instrument record (price, P/E, score, verdict, …)
+        "instrument":    _clean_record(inst),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Portfolio — routes
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/portfolio", summary="Portfolio holdings with live scored data")
+def get_portfolio() -> dict:
+    """
+    Returns the user's portfolio holdings merged with live scored instrument data.
+
+    Each holding record contains:
+
+    - **User-supplied**: ticker, shares, avg_cost, currency, account, notes, target_weight
+    - **Server-computed**: market_value, cost_basis, gain, gain_pct, weight (% of total)
+    - **Live instrument data**: full scored record — price, P/E, P/B, div_yield, score,
+      score_label, verdict, sector, signals, badges, …
+
+    A top-level `summary` object gives portfolio-wide totals.
+
+    Instruments in UNIVERSE are served from cache (fast).
+    Holdings not in UNIVERSE are fetched and scored on the fly.
+
+    The `weight_drift` field on each holding is populated when the user has set a
+    `target_weight` — positive means the position is over-weight, negative under-weight.
+    """
+    try:
+        raw_holdings: list[dict] = load_holdings(user_id=None)
+
+        if not raw_holdings:
+            return {
+                "ok": True,
+                "count": 0,
+                "holdings": [],
+                "summary": {
+                    "total_value":    0.0,
+                    "total_cost":     0.0,
+                    "total_gain":     0.0,
+                    "total_gain_pct": 0.0,
+                },
+            }
+
+        # Build scored universe lookup (uses cache — fast path)
+        instruments, _medians = _build_instruments(force_refresh=False)
+        universe_map: dict[str, dict] = {inst["ticker"]: inst for inst in instruments}
+
+        # First pass — enrich each holding and accumulate totals
+        enriched: list[dict] = []
+        total_value = 0.0
+        total_cost  = 0.0
+
+        for h in raw_holdings:
+            record = _enrich_holding(h, universe_map)
+            total_value += record["market_value"]
+            total_cost  += record["cost_basis"]
+            enriched.append(record)
+
+        total_gain     = total_value - total_cost
+        total_gain_pct = (total_gain / total_cost * 100) if total_cost else 0.0
+
+        # Second pass — fill actual weight and weight_drift
+        for record in enriched:
+            actual_weight = (record["market_value"] / total_value * 100) if total_value else 0.0
+            record["weight"] = round(actual_weight, 2)
+            target = record.get("target_weight")
+            record["weight_drift"] = round(actual_weight - target, 2) if target is not None else None
+
+        return {
+            "ok":    True,
+            "count": len(enriched),
+            "holdings": enriched,
+            "summary": {
+                "total_value":    round(total_value,    2),
+                "total_cost":     round(total_cost,     2),
+                "total_gain":     round(total_gain,     2),
+                "total_gain_pct": round(total_gain_pct, 4),
+            },
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/portfolio", summary="Add or update a holding", status_code=200)
+def upsert_holding(body: HoldingIn) -> dict:
+    """
+    Add a new holding or update an existing one (upsert by ticker).
+
+    If the ticker is already in the portfolio the existing record is replaced
+    in full — pass all fields you want to keep, not just the ones that changed.
+
+    Returns the updated portfolio summary so the UI can refresh without a
+    second GET request.
+    """
+    try:
+        ticker = body.ticker.upper().strip()
+        item   = {
+            "ticker":        ticker,
+            "shares":        body.shares,
+            "avg_cost":      body.avg_cost,
+            "currency":      body.currency.upper(),
+            "account":       body.account or "",
+            "notes":         body.notes   or "",
+            "target_weight": body.target_weight,
+        }
+
+        # Load, replace-or-append, save
+        holdings = load_holdings(user_id=None)
+        holdings = [h for h in holdings if h.get("ticker", "").upper() != ticker]
+        holdings.append(item)
+        save_holdings(user_id=None, items=holdings)
+
+        return {"ok": True, "ticker": ticker, "action": "upserted"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.delete("/api/portfolio/{ticker}", summary="Remove a holding")
+def delete_holding(ticker: str) -> dict:
+    """
+    Remove a holding from the portfolio by ticker.
+    Returns 404 if the ticker is not in the portfolio.
+    """
+    try:
+        ticker = ticker.upper().strip()
+        holdings = load_holdings(user_id=None)
+        before   = len(holdings)
+        holdings = [h for h in holdings if h.get("ticker", "").upper() != ticker]
+
+        if len(holdings) == before:
+            raise HTTPException(status_code=404, detail=f"{ticker} not found in portfolio")
+
+        save_holdings(user_id=None, items=holdings)
+        return {"ok": True, "ticker": ticker, "action": "deleted"}
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
