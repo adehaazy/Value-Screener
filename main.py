@@ -239,7 +239,11 @@ def get_watchlist() -> dict:
     fetched and scored on the fly.
     """
     try:
-        watchlist_tickers: list[str] = load_watchlist()
+        watchlist_items: list[dict] = load_watchlist(user_id=None)
+        watchlist_tickers: list[str] = [
+            i.get("ticker", i) if isinstance(i, dict) else i
+            for i in watchlist_items
+        ]
 
         if not watchlist_tickers:
             return {"ok": True, "tickers": [], "count": 0, "instruments": []}
