@@ -34,7 +34,9 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+import threading
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -119,6 +121,56 @@ def _clean_record(record: dict) -> dict:
     return cleaned
 
 
+def _build_from_cache() -> tuple[list[dict], dict] | None:
+    """
+    Build a scored instrument list using ONLY cached data — no network calls.
+    Returns (instruments, sector_medians) or None if the cache is completely empty.
+    Fast: reads all rows from SQLite in a single query.
+    """
+    raw: list[dict] = []
+    for group, meta in UNIVERSE.items():
+        asset_class = meta.get("asset_class", "Stock")
+        for ticker, name in meta["tickers"].items():
+            cached = _load_cache(ticker)
+            if cached:
+                cached.setdefault("name", name)
+                cached.setdefault("asset_class", asset_class)
+                cached.setdefault("group", group)
+                raw.append(cached)
+
+    if not raw:
+        return None
+
+    sector_medians = compute_sector_medians(raw)
+    scored = score_all(raw, sector_medians)
+    enriched = add_verdicts(scored, sector_medians)
+    for inst in enriched:
+        score = inst.get("score")
+        if score is not None:
+            inst["score_label"] = score_label(score)
+            inst["score_colour"] = score_colour(score)
+    return enriched, sector_medians
+
+
+# Background refresh state — prevents concurrent full-universe fetches
+_refresh_lock = threading.Lock()
+_refresh_in_progress = False
+
+
+def _background_refresh():
+    """Fetch all tickers from yfinance in the background, populating the cache."""
+    global _refresh_in_progress
+    with _refresh_lock:
+        _refresh_in_progress = True
+    try:
+        _build_instruments(force_refresh=False)
+    except Exception:
+        pass
+    finally:
+        with _refresh_lock:
+            _refresh_in_progress = False
+
+
 def _build_instruments(force_refresh: bool = False) -> tuple[list[dict], dict]:
     """
     Fetch, score, and enrich all instruments from UNIVERSE.
@@ -163,25 +215,51 @@ def _build_instruments(force_refresh: bool = False) -> tuple[list[dict], dict]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/screener", summary="Scored instrument list")
-def get_screener(refresh: bool = False) -> dict:
+def get_screener(background_tasks: BackgroundTasks, refresh: bool = False) -> dict:
     """
     Returns all instruments in UNIVERSE, scored and enriched with verdicts.
+
+    Strategy: cache-first, background-refresh.
+      1. Try to serve from SQLite cache immediately (fast — <1s).
+      2. If cache is empty OR refresh=true is requested, do a full live fetch
+         (slow — can take several minutes for 648 tickers on first deploy).
+      3. If cache has partial data, serve it immediately and kick off a
+         background refresh so future requests will have fresh data.
 
     Query params
     ------------
     refresh : bool  (default False)
-        Pass ?refresh=true to bypass cache and pull live data from yfinance.
-        Warning: can take 30–120 s for a full universe scan.
+        Pass ?refresh=true to force a live fetch bypassing cache.
     """
+    global _refresh_in_progress
     try:
-        instruments, sector_medians = _build_instruments(force_refresh=refresh)
+        # Force-refresh: caller explicitly wants live data
+        if refresh:
+            instruments, sector_medians = _build_instruments(force_refresh=True)
+            clean = [_clean_record(i) for i in instruments]
+            return {"ok": True, "count": len(clean), "from_cache": False,
+                    "sector_medians": _clean_record(sector_medians), "instruments": clean}
+
+        # Try cache first
+        cached_result = _build_from_cache()
+        if cached_result:
+            instruments, sector_medians = cached_result
+            clean = [_clean_record(i) for i in instruments]
+            # Kick off background refresh if nothing is already running
+            with _refresh_lock:
+                already_running = _refresh_in_progress
+            if not already_running:
+                background_tasks.add_task(_background_refresh)
+            return {"ok": True, "count": len(clean), "from_cache": True,
+                    "sector_medians": _clean_record(sector_medians), "instruments": clean}
+
+        # Cache is empty (fresh deploy) — must do a full live fetch.
+        # This is the slow path; it only happens once after a fresh deploy.
+        instruments, sector_medians = _build_instruments(force_refresh=False)
         clean = [_clean_record(i) for i in instruments]
-        return {
-            "ok": True,
-            "count": len(clean),
-            "sector_medians": _clean_record(sector_medians),
-            "instruments": clean,
-        }
+        return {"ok": True, "count": len(clean), "from_cache": False,
+                "sector_medians": _clean_record(sector_medians), "instruments": clean}
+
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
