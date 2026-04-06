@@ -14,6 +14,8 @@ GET    /api/macro             — macro indicator data (US + UK)
 GET    /api/portfolio         — holdings merged with live scored data + summary stats
 POST   /api/portfolio         — add or update a holding (upsert by ticker)
 DELETE /api/portfolio/{ticker} — remove a holding
+GET    /api/price-history     — OHLCV price history for a ticker (yfinance)
+GET    /api/deepdive          — full instrument record + AI investment thesis
 
 Run
 ---
@@ -30,13 +32,14 @@ Dependencies (add to requirements.txt if not already present)
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any, Optional
 
 import threading
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -413,6 +416,237 @@ def delete_watchlist_item(ticker: str) -> dict:
             raise HTTPException(status_code=404, detail=f"{ticker} not found in watchlist")
         remove_from_watchlist(user_id=None, ticker=ticker)
         return {"ok": True, "ticker": ticker, "action": "removed"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/price-history", summary="OHLCV price history for a ticker")
+def get_price_history(
+    ticker: str = Query(..., description="Yahoo Finance ticker, e.g. ABF.L"),
+    period: str = Query("1y", description="One of: 1mo 3mo 6mo ytd 1y 5y"),
+) -> dict:
+    """
+    Returns a time-series of daily closing prices for the requested period.
+    Uses yfinance under the hood; results are NOT cached (called on demand).
+    Response: { ok, ticker, period, data: [{date, price}, ...] }
+    """
+    try:
+        try:
+            import yfinance as yf
+        except ImportError:
+            raise HTTPException(status_code=500, detail="yfinance not installed")
+
+        # Normalise period to a yfinance-accepted value
+        period_map = {
+            "1m": "1mo", "1mo": "1mo",
+            "3m": "3mo", "3mo": "3mo",
+            "6m": "6mo", "6mo": "6mo",
+            "ytd": "ytd",
+            "1y": "1y",
+            "5y": "5y",
+        }
+        yf_period = period_map.get(period.lower(), "1y")
+
+        hist = yf.Ticker(ticker.upper()).history(period=yf_period)
+        if hist is None or hist.empty:
+            return {"ok": False, "ticker": ticker, "period": period, "data": []}
+
+        data = [
+            {
+                "date": str(idx.date()),
+                "price": round(float(row["Close"]), 4),
+            }
+            for idx, row in hist.iterrows()
+        ]
+        return {"ok": True, "ticker": ticker.upper(), "period": yf_period, "data": data}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+def _generate_thesis(inst: dict, briefing: dict | None) -> str:
+    """
+    Generate an AI investment thesis for `inst` using Claude.
+    Falls back to a data-driven template if the API key is absent or the
+    call fails — so the endpoint always returns something useful.
+    """
+    try:
+        import anthropic as _ant
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set")
+
+        client = _ant.Anthropic(api_key=api_key)
+
+        name        = inst.get("name", inst.get("ticker", ""))
+        ticker      = inst.get("ticker", "")
+        sector      = inst.get("sector", "Unknown")
+        score       = inst.get("score")
+        score_lbl   = inst.get("score_label", "")
+        price       = inst.get("price")
+        currency    = inst.get("currency", "")
+        pe          = inst.get("pe")
+        pb          = inst.get("pb")
+        ev_ebitda   = inst.get("ev_ebitda")
+        div_yield   = inst.get("div_yield")
+        yr1_pct     = inst.get("yr1_pct")
+        roe         = inst.get("roe")
+        revenue     = inst.get("revenue")
+        rev_growth  = inst.get("revenue_growth")
+        earn_growth = inst.get("earnings_growth")
+        debt_eq     = inst.get("debt_equity")
+        market_cap  = inst.get("market_cap")
+        high_52w    = inst.get("high_52w")
+        low_52w     = inst.get("low_52w")
+
+        # Format helpers
+        def _pct(v, decimals=1):
+            if v is None: return "N/A"
+            return f"{v:.{decimals}f}%"
+        def _x(v, decimals=1):
+            if v is None: return "N/A"
+            return f"{v:.{decimals}f}x"
+        def _fmt(v, decimals=2):
+            if v is None: return "N/A"
+            return f"{v:.{decimals}f}"
+
+        # Briefing excerpt (if available and mentions this ticker)
+        briefing_snippet = ""
+        if briefing:
+            full = briefing.get("briefing", "") or ""
+            if isinstance(full, dict):
+                full = full.get("text", "") or ""
+            # Pull any sentence that mentions the ticker or company name
+            import re
+            sentences = re.split(r'(?<=[.!?])\s+', str(full))
+            relevant = [s for s in sentences if ticker in s or name.split()[0] in s]
+            if relevant:
+                briefing_snippet = " ".join(relevant[:3])
+
+        prompt = f"""You are a senior equity analyst writing a concise investment thesis for a professional investor.
+
+Instrument: {name} ({ticker})
+Sector: {sector}
+Composite Score: {score}/100 — {score_lbl}
+
+Key Metrics:
+- Price: {currency} {_fmt(price)}
+- Market Cap: {_fmt(market_cap, 0) if market_cap else 'N/A'}
+- P/E: {_x(pe)}
+- P/B: {_x(pb)}
+- EV/EBITDA: {_x(ev_ebitda)}
+- Dividend Yield: {_pct(div_yield)}
+- 1Y Return: {_pct(yr1_pct)}
+- ROE: {_pct(roe * 100 if roe else None)}
+- Revenue Growth: {_pct(rev_growth * 100 if rev_growth else None)}
+- Earnings Growth: {_pct(earn_growth * 100 if earn_growth else None)}
+- Debt/Equity: {_fmt(debt_eq)}
+- 52W High: {_fmt(high_52w)} / Low: {_fmt(low_52w)}
+{f'Recent context from market briefing: {briefing_snippet}' if briefing_snippet else ''}
+
+Write a 3–4 paragraph investment thesis in the tone of a highly skilled financial analyst. Structure it as:
+1. Opening: What is the company and why it matters right now
+2. Valuation & Quality case (reference the specific metrics above)
+3. Key risks and considerations
+4. Conclusion with a balanced view
+
+Be specific, use the numbers provided, and cite your reasoning. Do not use bullet points — flowing prose only. Do not add headers. Attribute any market context to the briefing where relevant."""
+
+        message = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=700,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip()
+
+    except Exception:
+        # Graceful fallback — deterministic template from data
+        name      = inst.get("name", inst.get("ticker", ""))
+        score     = inst.get("score")
+        score_lbl = inst.get("score_label", "")
+        sector    = inst.get("sector", "")
+        pe        = inst.get("pe")
+        div_yield = inst.get("div_yield")
+        yr1_pct   = inst.get("yr1_pct")
+
+        valuation_note = f"trading on a P/E of {pe:.1f}x" if pe else "with valuation metrics under review"
+        div_note       = f"a dividend yield of {div_yield:.1f}%" if div_yield else "a dividend policy currently under review"
+        return_note    = (f"returning {yr1_pct:.1f}% over the past year" if yr1_pct else "with mixed recent price performance")
+
+        return (
+            f"{name} is a {sector} company currently rated {score_lbl} with a composite score of "
+            f"{round(score) if score else 'N/A'}/100. "
+            f"The company is {valuation_note}, offering {div_note}, and {return_note}. "
+            f"A detailed AI-generated thesis is temporarily unavailable — check back shortly or ensure "
+            f"ANTHROPIC_API_KEY is configured on the server."
+        )
+
+
+@app.get("/api/deepdive", summary="Full instrument record + AI investment thesis")
+def get_deepdive(
+    ticker: str = Query(..., description="Yahoo Finance ticker, e.g. ABF.L"),
+) -> dict:
+    """
+    Returns scored instrument data for a single ticker, plus an AI-generated
+    investment thesis written in the style of a senior equity analyst.
+
+    The thesis is generated fresh on each call using Claude (claude-opus-4-6).
+    Instrument data is served from cache where possible.
+    """
+    try:
+        ticker = ticker.upper().strip()
+
+        # ── 1. Resolve instrument data ──────────────────────────────────────
+        # Look up in UNIVERSE first (fast cache path)
+        universe_meta: dict[str, tuple[str, str, str]] = {}
+        for group, meta in UNIVERSE.items():
+            ac = meta.get("asset_class", "Stock")
+            for t, n in meta["tickers"].items():
+                universe_meta[t] = (n, ac, group)
+
+        if ticker in universe_meta:
+            name, asset_class, group = universe_meta[ticker]
+            raw = _load_cache(ticker)
+            if raw:
+                raw.setdefault("name", name)
+                raw.setdefault("asset_class", asset_class)
+                raw.setdefault("group", group)
+            else:
+                raw = fetch_one(ticker, name, asset_class, group)
+        else:
+            raw = fetch_one(ticker, ticker, "Stock", "Deepdive")
+
+        if not raw or not raw.get("ok"):
+            raise HTTPException(status_code=404, detail=f"No data found for {ticker}")
+
+        # ── 2. Score and enrich ─────────────────────────────────────────────
+        sector_medians = compute_sector_medians([raw])
+        scored         = score_all([raw], sector_medians)
+        enriched       = add_verdicts(scored, sector_medians)
+        inst           = enriched[0] if enriched else raw
+
+        sc = inst.get("score")
+        if sc is not None:
+            inst["score_label"]  = score_label(sc)
+            inst["score_colour"] = score_colour(sc)
+
+        # ── 3. Generate AI thesis ───────────────────────────────────────────
+        try:
+            briefing = load_briefing()
+        except Exception:
+            briefing = None
+
+        thesis = _generate_thesis(inst, briefing)
+
+        return {
+            "ok":      True,
+            "ticker":  ticker,
+            "instrument": _clean_record(inst),
+            "thesis":  thesis,
+        }
     except HTTPException:
         raise
     except Exception as exc:
