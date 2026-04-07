@@ -327,11 +327,12 @@ def run_signals(
     # 7 — Material SEC events
     all_signals.extend(_edgar_signals(surveillance_data))
 
-    # Deduplicate by title (same signal can appear from multiple sources)
+    # Deduplicate by (type, ticker, title) — title alone is too broad and
+    # would drop legitimate signals from different tickers or signal types.
     seen = set()
     deduped = []
     for s in all_signals:
-        key = s["title"]
+        key = (s.get("type", ""), s.get("ticker", ""), s["title"])
         if key not in seen:
             seen.add(key)
             deduped.append(s)

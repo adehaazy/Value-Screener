@@ -201,15 +201,15 @@ def _thesis_cache_get(ticker: str) -> str | None:
     """Return cached thesis if it exists and is < THESIS_TTL_DAYS old, else None."""
     with _json_lock:
         store = _read_json(_THESIS_CACHE)
-    entry = store.get(ticker.upper())
-    if not entry:
-        return None
-    try:
-        age = (datetime.datetime.utcnow() - datetime.datetime.fromisoformat(entry["generated_at"])).days
-        if age < _THESIS_TTL_DAYS:
-            return entry["thesis"]
-    except Exception:
-        pass
+        entry = store.get(ticker.upper())
+        if not entry:
+            return None
+        try:
+            age = (datetime.datetime.utcnow() - datetime.datetime.fromisoformat(entry["generated_at"])).days
+            if age < _THESIS_TTL_DAYS:
+                return entry["thesis"]
+        except Exception:
+            pass
     return None
 
 
@@ -235,10 +235,10 @@ def _rate_limit_check(ip: str) -> tuple[bool, int]:
     today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
     with _json_lock:
         store = _read_json(_RATE_LIMIT_FILE)
-    record = store.get(ip, {})
-    if record.get("date") != today:
-        record = {"date": today, "count": 0}
-    count = record.get("count", 0)
+        record = store.get(ip, {})
+        if record.get("date") != today:
+            record = {"date": today, "count": 0}
+        count = record.get("count", 0)
     return count < _THESIS_DAILY_LIMIT, max(0, _THESIS_DAILY_LIMIT - count)
 
 
@@ -261,15 +261,15 @@ def _dividend_cache_get(ticker: str) -> dict | None:
     """Return cached dividend data if < DIVIDEND_TTL_DAYS old, else None."""
     with _json_lock:
         store = _read_json(_DIVIDEND_CACHE)
-    entry = store.get(ticker.upper())
-    if not entry:
-        return None
-    try:
-        age = (datetime.datetime.utcnow() - datetime.datetime.fromisoformat(entry["generated_at"])).days
-        if age < _DIVIDEND_TTL_DAYS:
-            return entry
-    except Exception:
-        pass
+        entry = store.get(ticker.upper())
+        if not entry:
+            return None
+        try:
+            age = (datetime.datetime.utcnow() - datetime.datetime.fromisoformat(entry["generated_at"])).days
+            if age < _DIVIDEND_TTL_DAYS:
+                return entry
+        except Exception:
+            pass
     return None
 
 
