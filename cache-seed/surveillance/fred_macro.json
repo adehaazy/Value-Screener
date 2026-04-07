@@ -1,0 +1,47 @@
+{
+  "source": "FRED / Federal Reserve",
+  "fetched_at": "2026-03-28T13:12:04.724596",
+  "series": {
+    "DFF": {
+      "name": "Fed Funds Rate",
+      "value": null,
+      "unit": "%"
+    },
+    "T10Y2Y": {
+      "name": "Yield Curve (10Y-2Y)",
+      "value": null,
+      "unit": "%"
+    },
+    "CPIAUCSL": {
+      "name": "US CPI (YoY)",
+      "value": null,
+      "unit": "index"
+    },
+    "UNRATE": {
+      "name": "US Unemployment",
+      "value": null,
+      "unit": "%"
+    },
+    "BAMLH0A0HYM2": {
+      "name": "US HY Credit Spread",
+      "value": null,
+      "unit": "bps"
+    },
+    "VIXCLS": {
+      "name": "VIX (Fear Index)",
+      "value": null,
+      "unit": "pts"
+    },
+    "DGS10": {
+      "name": "US 10Y Treasury Yield",
+      "value": null,
+      "unit": "%"
+    },
+    "DGS2": {
+      "name": "US 2Y Treasury Yield",
+      "value": null,
+      "unit": "%"
+    }
+  },
+  "signals": []
+}

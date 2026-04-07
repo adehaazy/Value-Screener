@@ -1,0 +1,538 @@
+{
+  "generated_at": "2026-03-28T16:59:06.728546",
+  "date_str": "Saturday 28 March 2026, 16:59",
+  "headline": "Macro backdrop constructive \u00b7 5 quality instruments scoring 70+ \u00b7 12 high-priority alerts require attention (Saturday 28 March 2026, 16:59)",
+  "macro": {
+    "tone": "constructive",
+    "tone_detail": "Macro backdrop is relatively benign. No major stress signals active.",
+    "metrics": [],
+    "warnings": 0
+  },
+  "signal_summary": {
+    "total": 38,
+    "high": 12,
+    "medium": 26,
+    "by_type": {
+      "score_drift": 2,
+      "value_opportunity": 23,
+      "near_52w_low": 13
+    },
+    "top_3": [
+      {
+        "type": "score_drift",
+        "severity": "high",
+        "title": "\ud83d\udcc9 JPMorgan Chase score declined by 22 pts",
+        "detail": "JPMorgan Chase (JPM) moved from 49 \u2192 27. Check recent results or valuation changes.",
+        "ticker": "JPM",
+        "source": "Score Tracker",
+        "ts": "2026-03-28T16:59:06.725986",
+        "drift": -22.2,
+        "score": 27.0
+      },
+      {
+        "type": "value_opportunity",
+        "severity": "high",
+        "title": "\u2b50 ING Group in Strong Buy territory",
+        "detail": "ING Group (INGA.AS) scores 89/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+        "ticker": "INGA.AS",
+        "source": "Screener",
+        "ts": "2026-03-28T16:59:06.726213",
+        "score": 89.2
+      },
+      {
+        "type": "value_opportunity",
+        "severity": "high",
+        "title": "\u2b50 Banco BPM in Strong Buy territory",
+        "detail": "Banco BPM (BAMI.MI) scores 88/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+        "ticker": "BAMI.MI",
+        "source": "Screener",
+        "ts": "2026-03-28T16:59:06.726234",
+        "score": 88.4
+      }
+    ]
+  },
+  "signals": [
+    {
+      "type": "score_drift",
+      "severity": "high",
+      "title": "\ud83d\udcc9 JPMorgan Chase score declined by 22 pts",
+      "detail": "JPMorgan Chase (JPM) moved from 49 \u2192 27. Check recent results or valuation changes.",
+      "ticker": "JPM",
+      "source": "Score Tracker",
+      "ts": "2026-03-28T16:59:06.725986",
+      "drift": -22.2,
+      "score": 27.0
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 ING Group in Strong Buy territory",
+      "detail": "ING Group (INGA.AS) scores 89/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "INGA.AS",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726213",
+      "score": 89.2
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 Banco BPM in Strong Buy territory",
+      "detail": "Banco BPM (BAMI.MI) scores 88/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "BAMI.MI",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726234",
+      "score": 88.4
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 Banca Monte dei Paschi in Strong Buy territory",
+      "detail": "Banca Monte dei Paschi (BMPS.MI) scores 94/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "BMPS.MI",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726239",
+      "score": 93.6
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 Intesa Sanpaolo in Strong Buy territory",
+      "detail": "Intesa Sanpaolo (ISP.MI) scores 92/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "ISP.MI",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726246",
+      "score": 91.8
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 UniCredit in Strong Buy territory",
+      "detail": "UniCredit (UCG.MI) scores 96/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "UCG.MI",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726254",
+      "score": 95.9
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 Vanguard FTSE All-World in Strong Buy territory",
+      "detail": "Vanguard FTSE All-World (VWRL.L) scores 89/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "VWRL.L",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726380",
+      "score": 88.6
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 Vanguard S&P 500 in Strong Buy territory",
+      "detail": "Vanguard S&P 500 (VUSD.L) scores 88/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "VUSD.L",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726385",
+      "score": 88.0
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 iShares Core EM IMI in Strong Buy territory",
+      "detail": "iShares Core EM IMI (EMIM.L) scores 92/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "EMIM.L",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726396",
+      "score": 91.6
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 Vanguard FTSE All-World High Div in Strong Buy territory",
+      "detail": "Vanguard FTSE All-World High Div (VHYL.L) scores 94/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "VHYL.L",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726411",
+      "score": 93.6
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 iShares UK Gilts 1-3yr in Strong Buy territory",
+      "detail": "iShares UK Gilts 1-3yr (IS15.L) scores 86/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "IS15.L",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726416",
+      "score": 86.2
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "high",
+      "title": "\u2b50 Vanguard UK Government Bond in Strong Buy territory",
+      "detail": "Vanguard UK Government Bond (VGOV.L) scores 89/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "VGOV.L",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726428",
+      "score": 89.2
+    },
+    {
+      "type": "score_drift",
+      "severity": "medium",
+      "title": "\ud83d\udcc9 BBVA score declined by 10 pts",
+      "detail": "BBVA (BBVA.MC) moved from 92 \u2192 82. Check recent results or valuation changes.",
+      "ticker": "BBVA.MC",
+      "source": "Score Tracker",
+      "ts": "2026-03-28T16:59:06.725733",
+      "drift": -10.0,
+      "score": 81.6
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 BBVA in Strong Buy territory",
+      "detail": "BBVA (BBVA.MC) scores 82/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "BBVA.MC",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726222",
+      "score": 81.6
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 Swedbank in Strong Buy territory",
+      "detail": "Swedbank (SWED-A.ST) scores 77/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "SWED-A.ST",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726265",
+      "score": 76.8
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 Danske Bank in Strong Buy territory",
+      "detail": "Danske Bank (DANSKE.CO) scores 78/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "DANSKE.CO",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726270",
+      "score": 78.0
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 DNB Bank in Strong Buy territory",
+      "detail": "DNB Bank (DNB.OL) scores 79/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "DNB.OL",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726275",
+      "score": 78.7
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 US Bancorp in Strong Buy territory",
+      "detail": "US Bancorp (USB) scores 79/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "USB",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726326",
+      "score": 79.4
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 Huntington Bancshares in Strong Buy territory",
+      "detail": "Huntington Bancshares (HBAN) scores 84/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "HBAN",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726331",
+      "score": 83.8
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 Regions Financial in Strong Buy territory",
+      "detail": "Regions Financial (RF) scores 81/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "RF",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726337",
+      "score": 81.4
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 FedEx in Strong Buy territory",
+      "detail": "FedEx (FDX) scores 76/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "FDX",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726351",
+      "score": 75.8
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 iShares Core FTSE 100 in Strong Buy territory",
+      "detail": "iShares Core FTSE 100 (ISF.L) scores 77/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "ISF.L",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726390",
+      "score": 76.7
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 iShares MSCI World Quality Factor in Strong Buy territory",
+      "detail": "iShares MSCI World Quality Factor (IQSA.L) scores 83/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "IQSA.L",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726402",
+      "score": 82.6
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 iShares Euro Dividend in Strong Buy territory",
+      "detail": "iShares Euro Dividend (IDVY.AS) scores 81/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "IDVY.AS",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726407",
+      "score": 81.1
+    },
+    {
+      "type": "value_opportunity",
+      "severity": "medium",
+      "title": "\u2b50 Invesco EUR Corp Bond 0-3yr in Strong Buy territory",
+      "detail": "Invesco EUR Corp Bond 0-3yr (ERNS.L) scores 75/100 \u2014 passes quality gate and trades at a meaningful discount to sector peers.",
+      "ticker": "ERNS.L",
+      "source": "Screener",
+      "ts": "2026-03-28T16:59:06.726421",
+      "score": 75.2
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd Ashtead Group near 52-week low",
+      "detail": "Ashtead Group (AHT.L) is within 0.0% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "AHT.L",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726451",
+      "pct_from_low": 0.0
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd B&M European Value Retail near 52-week low",
+      "detail": "B&M European Value Retail (BME.L) is within 2.1% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "BME.L",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726470",
+      "pct_from_low": 2.1
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd Flutter Entertainment near 52-week low",
+      "detail": "Flutter Entertainment (FLTR.L) is within 0.0% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "FLTR.L",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726506",
+      "pct_from_low": 0.0
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd WPP near 52-week low",
+      "detail": "WPP (WPP.L) is within 3.5% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "WPP.L",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726622",
+      "pct_from_low": 3.5
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd Dassault Systemes near 52-week low",
+      "detail": "Dassault Systemes (DSY.PA) is within 4.0% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "DSY.PA",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726685",
+      "pct_from_low": 4.0
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd Vivendi near 52-week low",
+      "detail": "Vivendi (VIV.PA) is within 0.6% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "VIV.PA",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726717",
+      "pct_from_low": 0.6
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd Adyen near 52-week low",
+      "detail": "Adyen (ADYEN.AS) is within 0.0% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "ADYEN.AS",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726725",
+      "pct_from_low": 0.0
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd Wolters Kluwer near 52-week low",
+      "detail": "Wolters Kluwer (WKL.AS) is within 4.4% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "WKL.AS",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726739",
+      "pct_from_low": 4.4
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd Novo Nordisk near 52-week low",
+      "detail": "Novo Nordisk (NOVO-B.CO) is within 2.1% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "NOVO-B.CO",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726807",
+      "pct_from_low": 2.1
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd ServiceNow near 52-week low",
+      "detail": "ServiceNow (NOW) is within 0.0% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "NOW",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726837",
+      "pct_from_low": 0.0
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd Zscaler near 52-week low",
+      "detail": "Zscaler (ZS) is within 0.0% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "ZS",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726876",
+      "pct_from_low": 0.0
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd Baxter International near 52-week low",
+      "detail": "Baxter International (BAX) is within 0.0% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "BAX",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.726991",
+      "pct_from_low": 0.0
+    },
+    {
+      "type": "near_52w_low",
+      "severity": "medium",
+      "title": "\ud83d\udccd FactSet Research near 52-week low",
+      "detail": "FactSet Research (FDS) is within 4.9% of its 52-week low and passes quality checks. Potential opportunistic entry.",
+      "ticker": "FDS",
+      "source": "Price Monitor",
+      "ts": "2026-03-28T16:59:06.727061",
+      "pct_from_low": 4.9
+    }
+  ],
+  "opportunities": [
+    {
+      "ticker": "UCG.MI",
+      "name": "UniCredit",
+      "score": 95.9,
+      "label": "",
+      "group": "\ud83c\uddea\ud83c\uddfa EU Stocks",
+      "verdict": "Solid business with 16.8% return on equity. Trading at a meaningful discount to sector peers (P/E 8.7x vs sector 12.4x). 5.2% dividend yield adds income appeal. 23% below its 52-week high \u2014 potential entry opportunity.",
+      "pct_from_high": -23.4
+    },
+    {
+      "ticker": "BMPS.MI",
+      "name": "Banca Monte dei Paschi",
+      "score": 93.6,
+      "label": "",
+      "group": "\ud83c\uddea\ud83c\uddfa EU Stocks",
+      "verdict": "Adequate business (13.0% ROE). Trading at a meaningful discount to sector peers (P/E 4.9x vs sector 12.4x). 11.5% dividend yield adds income appeal. has pulled back 20% from recent highs.",
+      "pct_from_high": -19.8
+    },
+    {
+      "ticker": "VHYL.L",
+      "name": "Vanguard FTSE All-World High Div",
+      "score": 93.6,
+      "label": "",
+      "group": "\ud83d\udce6 ETFs & Index Funds",
+      "verdict": "Cost data unavailable. Large, highly liquid fund ($11.5bn AUM). Strong 1-year return of 18.1%.",
+      "pct_from_high": -6.2
+    },
+    {
+      "ticker": "ISP.MI",
+      "name": "Intesa Sanpaolo",
+      "score": 91.8,
+      "label": "",
+      "group": "\ud83c\uddea\ud83c\uddfa EU Stocks",
+      "verdict": "Adequate business (14.3% ROE). Trading at a meaningful discount to sector peers (P/E 8.9x vs sector 12.4x). 7.5% dividend yield adds income appeal. has pulled back 17% from recent highs.",
+      "pct_from_high": -16.8
+    },
+    {
+      "ticker": "EMIM.L",
+      "name": "iShares Core EM IMI",
+      "score": 91.6,
+      "label": "",
+      "group": "\ud83d\udce6 ETFs & Index Funds",
+      "verdict": "Cost data unavailable. Large, highly liquid fund ($41.4bn AUM). Strong 1-year return of 23.3%.",
+      "pct_from_high": -10.9
+    }
+  ],
+  "watchlist": [
+    {
+      "ticker": "IDVY.AS",
+      "name": "iShares Euro Dividend",
+      "score": 81.1,
+      "label": "",
+      "ytd_pct": -3.7,
+      "yr1_pct": 16.3,
+      "pct_from_high": -7.1,
+      "verdict": "Cost data unavailable. Strong 1-year return of 16.3%."
+    },
+    {
+      "ticker": "HBAN",
+      "name": "Huntington Bancshares",
+      "score": 83.8,
+      "label": "",
+      "ytd_pct": -12.9,
+      "yr1_pct": 5.9,
+      "pct_from_high": -20.9,
+      "verdict": "Adequate business (10.1% ROE). Modestly below sector median on P/E (10.8x vs 12.4x). 4.1% dividend yield adds income appeal. 21% below its 52-week high \u2014 potential entry opportunity."
+    },
+    {
+      "ticker": "RF",
+      "name": "Regions Financial",
+      "score": 81.4,
+      "label": "",
+      "ytd_pct": -7.8,
+      "yr1_pct": 22.4,
+      "pct_from_high": -17.9,
+      "verdict": "Adequate business (11.7% ROE). Modestly below sector median on P/E (10.9x vs 12.4x). 4.2% dividend yield adds income appeal. has pulled back 18% from recent highs."
+    },
+    {
+      "ticker": "META",
+      "name": "Meta Platforms",
+      "score": null,
+      "label": "",
+      "ytd_pct": -19.1,
+      "yr1_pct": -8.6,
+      "pct_from_high": -33.3,
+      "verdict": "Does not pass the quality filter (excessive leverage). Excluded from value scoring \u2014 a cheap price alone doesn't make this attractive."
+    },
+    {
+      "ticker": "TFC",
+      "name": "Truist Financial",
+      "score": null,
+      "label": "",
+      "ytd_pct": -9.6,
+      "yr1_pct": 15.4,
+      "pct_from_high": -19.4,
+      "verdict": "Does not pass the quality filter (weak returns on equity). Excluded from value scoring \u2014 a cheap price alone doesn't make this attractive."
+    }
+  ],
+  "news_highlights": []
+}

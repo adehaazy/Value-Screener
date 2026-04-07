@@ -36,3 +36,7 @@ env/
 
 # Streamlit local config (not secrets, just personal preferences)
 .streamlit/config.toml
+
+# Cache seed — committed snapshot used to pre-warm Render on deploy
+!cache-seed/
+!cache-seed/**

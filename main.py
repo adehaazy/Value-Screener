@@ -97,6 +97,56 @@ app.add_middleware(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Startup — seed cache + background warm-up
+# ══════════════════════════════════════════════════════════════════════════════
+
+import asyncio
+import shutil
+
+_SEED_DIR = ROOT / "cache-seed"
+
+
+def _seed_cache() -> None:
+    """
+    Copy files from cache-seed/ into cache/ for any that don't already exist.
+    This ensures Render always starts with a pre-warmed cache after a deploy,
+    rather than an empty one that forces a slow full rebuild on first request.
+    """
+    if not _SEED_DIR.exists():
+        return
+    cache_dir = ROOT / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    for src in _SEED_DIR.rglob("*"):
+        if src.is_file():
+            rel = src.relative_to(_SEED_DIR)
+            dst = cache_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if not dst.exists():
+                shutil.copy2(src, dst)
+
+
+def _background_warm_up() -> None:
+    """
+    Triggered on startup: refreshes the screener cache in the background so
+    data is fresh without blocking the first incoming request.
+    Only runs if a seed cache is already in place (so first request is fast).
+    """
+    try:
+        _build_instruments(force_refresh=True)
+    except Exception:
+        pass
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    # 1. Seed cache from committed snapshot (instant — just file copies)
+    _seed_cache()
+    # 2. Kick off a background refresh so data freshens without blocking users
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, _background_warm_up)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
