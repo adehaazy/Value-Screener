@@ -142,7 +142,7 @@ async def on_startup() -> None:
     # 1. Seed cache from committed snapshot (instant — just file copies)
     _seed_cache()
     # 2. Kick off a background refresh so data freshens without blocking users
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     loop.run_in_executor(None, _background_warm_up)
 
 
@@ -799,6 +799,13 @@ def get_price_history(
     Uses yfinance under the hood; results are NOT cached (called on demand).
     Response: { ok, ticker, period, data: [{date, price}, ...] }
     """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
     try:
         try:
             import yfinance as yf
@@ -966,6 +973,13 @@ def get_deepdive(
     same ticker serve the cached version instantly at no API cost.
     Instrument data is served from SQLite cache where possible.
     """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
     try:
         ticker = ticker.upper().strip()
 
@@ -1016,8 +1030,12 @@ def get_deepdive(
             thesis_cached_at = entry.get("generated_at")
         else:
             # Need to generate — check rate limit first
-            client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
-            client_ip = client_ip.split(",")[0].strip()  # handle proxy chains
+            # Respect X-Forwarded-For set by Render's proxy
+            client_ip = (
+                request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                or request.headers.get("x-real-ip", "")
+                or (request.client.host if request.client else "unknown")
+            )
 
             allowed, remaining = _rate_limit_check(client_ip)
             if not allowed:
@@ -1055,7 +1073,9 @@ def get_deepdive(
             "rate_limited":     False,
             "calls_remaining":  _THESIS_DAILY_LIMIT if thesis_from_cache else (
                 _rate_limit_check(
-                    (request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown") or "").split(",")[0].strip()
+                    request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                    or request.headers.get("x-real-ip", "")
+                    or (request.client.host if request.client else "unknown")
                 )[1]
             ),
         }
@@ -1245,6 +1265,13 @@ def get_dividends(
     Results are cached for 30 days — dividend policy rarely changes mid-year.
     AI analysis uses claude-opus-4-6; does NOT count against the thesis rate limit.
     """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
     try:
         ticker = ticker.upper().strip()
 
@@ -1363,6 +1390,13 @@ def delete_analysis(ticker: str) -> dict:
     Next time /api/deepdive is called for this ticker, a fresh thesis will be
     generated (subject to the rate limit).
     """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
     try:
         ticker = ticker.upper().strip()
         with _json_lock:
@@ -1387,12 +1421,23 @@ def refresh_analysis(request: Request, ticker: str) -> dict:
     This counts against the caller's daily rate limit (same as /api/deepdive).
     Returns the full new thesis plus updated metadata.
     """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
     try:
         ticker = ticker.upper().strip()
 
         # ── Rate limit check ──────────────────────────────────────────────────
-        client_ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "unknown")
-        client_ip = client_ip.split(",")[0].strip()
+        # Respect X-Forwarded-For set by Render's proxy
+        client_ip = (
+            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or request.headers.get("x-real-ip", "")
+            or (request.client.host if request.client else "unknown")
+        )
         allowed, remaining = _rate_limit_check(client_ip)
         if not allowed:
             raise HTTPException(
