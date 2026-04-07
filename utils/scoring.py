@@ -682,10 +682,17 @@ def _score_etf(inst: dict, weights: dict) -> dict:
         if v is None: return None
         return _clamp(50 + v * 300)
 
-    s_aum = _score_aum(_f(inst.get("aum") or inst.get("totalAssets")))
+    # AUM: yfinance exposes ETF AUM as totalAssets, not marketCap
+    s_aum = _score_aum(_f(inst.get("aum") or inst.get("total_assets") or inst.get("totalAssets") or inst.get("market_cap")))
     s_ter = _score_ter(_f(inst.get("ter") or inst.get("annualReportExpenseRatio")))
-    s_ret = _score_ret(_f(inst.get("return_1y")))
-    s_mom = _score_mom(_f(inst.get("return_3m")))
+    # return_1y may be stored as yr1_pct (fetcher field name) — normalise to decimal
+    _r1y_raw = inst.get("return_1y") or inst.get("yr1_pct")
+    _r1y = (_r1y_raw / 100.0) if (_r1y_raw is not None and abs(_r1y_raw) > 1) else _r1y_raw
+    # return_3m may be stored as return_3m or ytd_pct as a proxy
+    _r3m_raw = inst.get("return_3m") or inst.get("ytd_pct")
+    _r3m = (_r3m_raw / 100.0) if (_r3m_raw is not None and abs(_r3m_raw) > 1) else _r3m_raw
+    s_ret = _score_ret(_f(_r1y))
+    s_mom = _score_mom(_f(_r3m))
 
     components = [
         (s_aum, wt_aum), (s_ter, wt_ter), (s_ret, wt_ret), (s_mom, wt_mom)
@@ -723,7 +730,7 @@ def _score_money_market(inst: dict, weights: dict) -> dict:
         return _clamp(100 - (v / 0.005) * 100)
 
     s_y = _s_yield(_f(inst.get("div_yield") or inst.get("dividendYield")))
-    s_a = _s_aum(_f(inst.get("aum") or inst.get("totalAssets")))
+    s_a = _s_aum(_f(inst.get("aum") or inst.get("total_assets") or inst.get("totalAssets") or inst.get("market_cap")))
     s_t = _s_ter(_f(inst.get("ter") or inst.get("annualReportExpenseRatio")))
 
     components = [(s_y, wt_yield), (s_a, wt_aum), (s_t, wt_ter)]
