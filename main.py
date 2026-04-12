@@ -58,7 +58,7 @@ from data.fetcher import (
     any_cache_exists,
     _load_cache,
 )
-from utils.scoring import score_all, score_label, score_colour, DEFAULT_QUALITY_THRESHOLDS
+from utils.scoring_engine import score_all, score_label, score_colour
 from utils.verdicts import add_verdicts
 from utils.signals import load_latest_signals, get_last_run_time, signals_summary
 from surveillance.briefing import load_briefing, generate_briefing

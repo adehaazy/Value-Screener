@@ -1634,6 +1634,13 @@ def score_all(
             "ca_score":           r.get("derived", {}).get("ca_score"),
             "p_fcf":              r.get("derived", {}).get("p_fcf"),
             "is_financial":       r.get("derived", {}).get("is_financial", False),
+            # Surface momentum_score at top level for frontend momentum filter
+            "momentum_score":     r.get("score_components", {}).get("momentum_score"),
+            # Backwards-compat fields for verdicts.py
+            # New engine uses penalties instead of hard quality gates, so we
+            # derive quality_passes from whether any severe penalties exist.
+            "quality_passes":       len(r.get("penalties", [])) == 0,
+            "quality_fail_reasons": r.get("penalties", []),
         }
         results.append(out)
 
