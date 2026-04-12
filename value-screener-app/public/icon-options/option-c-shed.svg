@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <!-- Option C: Minimal shed silhouette.
+       A simple pitched-roof outline — two strokes for the roof,
+       a rectangle for the body. No detail, no fuss. Reads as a
+       shed at 32px, reads as a geometric mark at 16px. -->
+  <rect width="32" height="32" rx="4" fill="#F5F3EF"/>
+  <!-- Roof -->
+  <path d="M7 15L16 7L25 15" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Body -->
+  <rect x="9" y="15" width="14" height="11" stroke="#1A1A1A" stroke-width="2" stroke-linejoin="round" fill="none"/>
+  <!-- Door -->
+  <rect x="14" y="20" width="4" height="6" stroke="#6B7F5E" stroke-width="1.5" fill="none"/>
+</svg>

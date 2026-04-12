@@ -90,11 +90,9 @@ def init_auth_db():
 def seed_sample_users():
     """Insert sample users from the spec (skip if they already exist)."""
     sample_users = [
-        ("Ade Okonkwo",   "ade.okonkwo", "maple42", "admin"),
-        ("Sarah Chen",    "sarah.chen",  "river88", "user"),
-        ("Marcus Rivera", "marcus.r",    "delta15", "user"),
-        ("Priya Nair",    "priya.nair",  "spark73", "editor"),
-        ("James Osei",    "james.osei",  "coast29", "viewer"),
+        ("Ade H",         "ade.h",       "maple42",  "admin"),
+        ("Marc D",        "marc.d",      "Sophie25", "user"),
+        ("Elan D",        "elan.d",      "Kestrel47", "user"),
     ]
     for display_name, username, passcode, role in sample_users:
         existing = fetch_one(
@@ -345,3 +343,75 @@ async def me_endpoint(user: dict = Depends(get_current_user)):
 @router.get("/validate")
 async def validate_endpoint(user: dict = Depends(get_current_user)):
     return {"valid": True, **_user_payload(user)}
+
+
+# ─── POST /api/auth/provision (admin only) ───────────────────────────────────
+
+class ProvisionRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=100)
+    display_name: str = Field(..., min_length=1, max_length=200)
+    passcode: str = Field(..., min_length=6)
+    role: str = Field(default="user")
+
+
+@router.post("/provision")
+async def provision_endpoint(body: ProvisionRequest, user: dict = Depends(get_current_user)):
+    """Create a new user. Admin only."""
+    if user.get("role") != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required.")
+
+    username = sanitize_input(body.username).lower().strip()
+
+    existing = fetch_one("SELECT user_id FROM users WHERE username = ?", (username,))
+    if existing:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"User '{username}' already exists.")
+
+    new_id = str(uuid.uuid4())
+    first_name = body.display_name.strip().split()[0]
+    pw_hash = hash_password(body.passcode)
+    now = datetime.now(timezone.utc).isoformat()
+
+    execute_write(
+        """INSERT INTO users
+               (user_id, email, email_verified, password_hash,
+                created_at, updated_at, login_attempts,
+                must_change_password, anonymized_id,
+                username, display_name, first_name, role)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            new_id,
+            f"{username}@bens-shed.app",
+            True,
+            pw_hash,
+            now, now,
+            0,
+            True,
+            str(uuid.uuid4()),
+            username, body.display_name.strip(), first_name, body.role,
+        ),
+    )
+
+    log_audit_event(user["user_id"], "user_provisioned", "", True, {
+        "new_username": username, "role": body.role,
+    })
+
+    return {
+        "success": True,
+        "username": username,
+        "display_name": body.display_name.strip(),
+        "role": body.role,
+        "must_change_passcode": True,
+    }
+
+
+# ─── GET /api/auth/users (admin only) ────────────────────────────────────────
+
+@router.get("/users")
+async def list_users_endpoint(user: dict = Depends(get_current_user)):
+    """List all users. Admin only."""
+    if user.get("role") != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin access required.")
+
+    from database import fetch_all as _fa
+    rows = _fa("SELECT user_id, username, display_name, first_name, role, last_login, must_change_password FROM users ORDER BY created_at")
+    return {"users": [dict(r) for r in rows]}

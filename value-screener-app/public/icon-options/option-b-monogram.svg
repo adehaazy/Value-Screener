@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <!-- Option B: "BS" monogram in monospace.
+       Typed, not designed. The brand guide says the wordmark should
+       look like it was typed. This is just the initials in JetBrains
+       Mono style, tight, on a warm ground. Smallest possible mark. -->
+  <rect width="32" height="32" rx="4" fill="#F5F3EF"/>
+  <text x="16" y="21.5" text-anchor="middle" font-family="'JetBrains Mono', 'SF Mono', 'Consolas', monospace" font-size="14" font-weight="500" letter-spacing="1" fill="#1A1A1A">BS</text>
+</svg>

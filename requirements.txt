@@ -6,9 +6,6 @@ numpy>=1.26.0
 # ── AI / LLM ──────────────────────────────────────────────────────────────────
 anthropic>=0.25.0
 
-# ── Streamlit frontend (existing app.py) ──────────────────────────────────────
-streamlit>=1.35.0
-
 # ── FastAPI backend (main.py) ─────────────────────────────────────────────────
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
@@ -17,6 +14,11 @@ pydantic>=2.0.0            # used by FastAPI for request body validation (Holdin
 # ── HTTP / networking ─────────────────────────────────────────────────────────
 requests>=2.31.0
 httpx>=0.27.0          # used by anthropic SDK internally
+feedparser>=6.0.0      # RSS feed parsing for briefing
+
+# ── Auth / security ───────────────────────────────────────────────────────────
+argon2-cffi>=23.1.0    # Argon2id password hashing (auth_utils.py)
+PyJWT>=2.8.0           # JWT session tokens (auth_utils.py)
 
 # ── Storage ───────────────────────────────────────────────────────────────────
 # SQLite ships with Python — no extra package needed
