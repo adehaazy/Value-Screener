@@ -76,6 +76,14 @@ from user_data import (
 )
 from utils.signal_enricher import get_macro_context, get_uk_macro_context
 
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logger = logging.getLogger("value_screener")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # App setup
 # ══════════════════════════════════════════════════════════════════════════════
@@ -123,6 +131,7 @@ def _seed_cache() -> None:
             dst.parent.mkdir(parents=True, exist_ok=True)
             if not dst.exists():
                 shutil.copy2(src, dst)
+    logger.info("Cache seeded from cache-seed/")
 
 
 def _background_warm_up() -> None:
@@ -131,10 +140,32 @@ def _background_warm_up() -> None:
     data is fresh without blocking the first incoming request.
     Only runs if a seed cache is already in place (so first request is fast).
     """
+    logger.info("Background warm-up started")
     try:
-        _build_instruments(force_refresh=True)
+        import time as _time
+        from data.universe import UNIVERSE
+        from data.fetcher import fetch_one
+
+        tickers = [
+            (ticker, name, meta.get("asset_class", "Stock"), group)
+            for group, meta in UNIVERSE.items()
+            for ticker, name in meta["tickers"].items()
+        ]
+        batch_size = 50
+        total = len(tickers)
+        for i in range(0, total, batch_size):
+            batch = tickers[i:i + batch_size]
+            for ticker, name, asset_class, group in batch:
+                try:
+                    fetch_one(ticker, name, asset_class, group, force_refresh=False)
+                except Exception:
+                    pass
+            done = min(i + batch_size, total)
+            logger.info("Warm-up: %d/%d tickers processed", done, total)
+            _time.sleep(1)
+        logger.info("Background warm-up complete")
     except Exception:
-        pass
+        logger.exception("Background warm-up failed")
 
 
 @app.on_event("startup")
@@ -144,6 +175,7 @@ async def on_startup() -> None:
     # 2. Kick off a background refresh so data freshens without blocking users
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, _background_warm_up)
+    logger.info("Server startup complete")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -209,7 +241,7 @@ def _thesis_cache_get(ticker: str) -> str | None:
             if age < _THESIS_TTL_DAYS:
                 return entry["thesis"]
         except Exception:
-            pass
+            logger.warning("Corrupt thesis cache entry for %s", ticker)
     return None
 
 
@@ -269,7 +301,7 @@ def _dividend_cache_get(ticker: str) -> dict | None:
             if age < _DIVIDEND_TTL_DAYS:
                 return entry
         except Exception:
-            pass
+            logger.warning("Corrupt dividend cache entry for %s", ticker)
     return None
 
 
@@ -1950,7 +1982,33 @@ def get_portfolio_performance(
 
 @app.get("/health", include_in_schema=False)
 def health() -> dict:
-    return {"status": "ok", "cache_populated": any_cache_exists()}
+    import datetime as _dt
+    cache_db_path = _CACHE_DIR / "cache.db"
+    thesis_count = len(_read_json(_THESIS_CACHE))
+    dividend_count = len(_read_json(_DIVIDEND_CACHE))
+
+    briefing_age_hours = None
+    try:
+        from surveillance.briefing import load_briefing
+        b = load_briefing()
+        if b and b.get("generated_at"):
+            delta = _dt.datetime.utcnow() - _dt.datetime.fromisoformat(b["generated_at"])
+            briefing_age_hours = round(delta.total_seconds() / 3600, 1)
+    except Exception:
+        pass
+
+    with _refresh_lock:
+        refresh_running = _refresh_in_progress
+
+    return {
+        "status": "ok",
+        "cache_populated": cache_db_path.exists(),
+        "thesis_cached": thesis_count,
+        "dividends_cached": dividend_count,
+        "briefing_age_hours": briefing_age_hours,
+        "refresh_in_progress": refresh_running,
+        "timestamp": _dt.datetime.utcnow().isoformat() + "Z",
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
