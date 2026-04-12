@@ -304,9 +304,15 @@ def _build_from_cache() -> tuple[list[dict], dict] | None:
     """
     Build a scored instrument list using ONLY cached data — no network calls.
     Returns (instruments, sector_medians) or None if the cache is completely empty.
-    Fast: reads all rows from SQLite in a single query.
+
+    Always returns ALL universe instruments. Instruments with no cache entry are
+    included as stubs with score=None so the frontend can show them as "pending".
+    Returns None only if the cache is completely empty (no data at all).
     """
     raw: list[dict] = []
+    stubs: list[dict] = []
+    has_any_cache = False
+
     for group, meta in UNIVERSE.items():
         asset_class = meta.get("asset_class", "Stock")
         for ticker, name in meta["tickers"].items():
@@ -316,10 +322,24 @@ def _build_from_cache() -> tuple[list[dict], dict] | None:
                 cached.setdefault("asset_class", asset_class)
                 cached.setdefault("group", group)
                 raw.append(cached)
+                has_any_cache = True
+            else:
+                # Include as a stub so the screener always shows all instruments
+                stubs.append({
+                    "ticker":     ticker,
+                    "name":       name,
+                    "asset_class": asset_class,
+                    "group":      group,
+                    "score":      None,
+                    "score_label": "Pending",
+                    "score_colour": "grey",
+                    "pending":    True,
+                })
 
-    if not raw:
+    if not has_any_cache:
         return None
 
+    # Score cached instruments; stubs pass through un-scored
     sector_medians = compute_sector_medians(raw)
     scored = score_all(raw, sector_medians)
     enriched = add_verdicts(scored, sector_medians)
@@ -328,7 +348,8 @@ def _build_from_cache() -> tuple[list[dict], dict] | None:
         if score is not None:
             inst["score_label"] = score_label(score)
             inst["score_colour"] = score_colour(score)
-    return enriched, sector_medians
+
+    return enriched + stubs, sector_medians
 
 
 # Background refresh state — prevents concurrent full-universe fetches
