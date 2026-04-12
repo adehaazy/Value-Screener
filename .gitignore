@@ -40,3 +40,9 @@ env/
 auth.db
 auth.db-journal
 *.db-journal
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
