@@ -1,0 +1,28 @@
+@theme {
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-sans:  "Inter", -apple-system, sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, monospace;
+  --color-vs-bg:          #F5F3EF;
+  --color-vs-bg-subtle:   #EDEAE4;
+  --color-vs-bg-card:     #FFFFFF;
+  --color-vs-bg-raised:   #F8F6F2;
+  --color-vs-accent:      #6B7F5E;
+  --color-vs-accent-dark: #576A4D;
+  --color-vs-ink:         #1A1A1A;
+  --color-vs-ink-mid:     #6B6B6B;
+  --color-vs-ink-soft:    #777777;
+  --color-vs-ink-faint:   #AAAAAA;
+  --color-vs-rule:        #D4D0C8;
+  --color-vs-rule-soft:   #E0DED8;
+  --color-vs-pos:         #6B7F5E;
+  --color-vs-pos-bg:      #EDF2EA;
+  --color-vs-neg:         #B5543A;
+  --color-vs-neg-bg:      #FFEEF0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-vs-bg);
+  color: var(--color-vs-ink);
+  -webkit-font-smoothing: antialiased;
+}

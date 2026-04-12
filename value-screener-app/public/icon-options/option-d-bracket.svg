@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <!-- Option D: Code bracket with shed roof.
+       A curly brace "{" with a tiny roof peak at the top — nods to
+       both the workshop/code aesthetic and the shed metaphor. The
+       most "developer" option. Feels typed. -->
+  <rect width="32" height="32" rx="4" fill="#F5F3EF"/>
+  <!-- Left bracket -->
+  <path d="M13 7C11 7 10 8 10 10V13.5C10 14.5 9 15.5 8 16C9 16.5 10 17.5 10 18.5V22C10 24 11 25 13 25" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Right bracket -->
+  <path d="M19 7C21 7 22 8 22 10V13.5C22 14.5 23 15.5 24 16C23 16.5 22 17.5 22 18.5V22C22 24 21 25 19 25" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Tiny roof peak -->
+  <path d="M13.5 4L16 2L18.5 4" stroke="#6B7F5E" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
