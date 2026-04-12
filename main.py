@@ -1,33 +1,31 @@
 """
-main.py — FastAPI wrapper for the Value Screener application.
+main.py — Value Screener FastAPI backend.
 
-Exposes the screener's core data as a JSON API so that any frontend
-(React, Next.js, mobile app, etc.) can consume it without touching Streamlit.
+JSON API consumed by the React frontend. All data is sourced from
+yfinance, cached locally, and scored with the composite scoring model.
 
 Endpoints
 ---------
-GET    /api/screener          — scored instruments
-GET    /api/briefing          — AI/rule-based market briefing
-GET    /api/signals           — alerts & signal list
-GET    /api/watchlist         — user watchlist with live data
-GET    /api/macro             — macro indicator data (US + UK)
-GET    /api/portfolio         — holdings merged with live scored data + summary stats
-POST   /api/portfolio         — add or update a holding (upsert by ticker)
-DELETE /api/portfolio/{ticker} — remove a holding
-GET    /api/price-history     — OHLCV price history for a ticker (yfinance)
-GET    /api/deepdive          — full instrument record + AI investment thesis
+GET    /api/screener              — full scored instrument universe (~850 instruments)
+GET    /api/briefing              — AI market briefing with macro, signals & news
+POST   /api/briefing/refresh      — regenerate briefing on demand
+GET    /api/briefing/news         — per-ticker and market RSS headlines
+GET    /api/signals               — alerts & score drift signals
+GET    /api/watchlist             — user watchlist with live scored data
+GET    /api/macro                 — macro indicator data (US + UK)
+GET    /api/portfolio             — holdings merged with live scored data + summary stats
+POST   /api/portfolio             — add or update a holding (upsert by ticker)
+DELETE /api/portfolio/{ticker}    — remove a holding
+GET    /api/portfolio/performance — per-holding price history for charting
+GET    /api/price-history         — OHLCV price history for a ticker
+GET    /api/deepdive              — full instrument record + AI investment thesis
+GET    /api/dividends             — dividend history + AI income analysis
+GET    /api/market/indices        — spot prices for 10 major indices/commodities
+GET    /health                    — liveness check
 
-Run
----
+Run locally
+-----------
     uvicorn main:app --reload --port 8000
-
-Dependencies (add to requirements.txt if not already present)
--------------------------------------------------------------
-    fastapi
-    uvicorn[standard]
-    yfinance
-    pandas
-    anthropic
 """
 
 from __future__ import annotations
@@ -49,7 +47,7 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).parent
 sys.path.insert(0, str(ROOT))
 
-# ── Local imports (mirror what app.py uses) ────────────────────────────────────
+# ── Local imports ────────────────────────────────────────────────────────────
 from data.universe import UNIVERSE
 from data.fetcher import (
     fetch_one,
