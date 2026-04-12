@@ -73,6 +73,8 @@ from user_data import (
     remove_from_holdings,
 )
 from utils.signal_enricher import get_macro_context, get_uk_macro_context
+from database import init_db as _init_db
+from auth_api import router as auth_router, init_auth_db, seed_sample_users
 
 import logging
 logging.basicConfig(
@@ -100,6 +102,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Auth routes ───────────────────────────────────────────────────────────────
+app.include_router(auth_router)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -168,7 +173,15 @@ def _background_warm_up() -> None:
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    # 1. Seed cache from committed snapshot (instant — just file copies)
+    # 0. JWT secret fallback for dev (override with JWT_SECRET_KEY env var in prod)
+    if not os.environ.get("JWT_SECRET_KEY"):
+        os.environ["JWT_SECRET_KEY"] = "dev-secret-change-in-production"
+        logger.warning("JWT_SECRET_KEY not set — using dev fallback (NOT for production)")
+    # 0b. Initialise auth database tables + seed demo users
+    _init_db()
+    init_auth_db()
+    seed_sample_users()
+    # 1. Seed screener cache from committed snapshot (instant — just file copies)
     _seed_cache()
     # 2. Kick off a background refresh so data freshens without blocking users
     loop = asyncio.get_running_loop()
