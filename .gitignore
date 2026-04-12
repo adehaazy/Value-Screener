@@ -40,3 +40,9 @@ env/
 # Cache seed — committed snapshot used to pre-warm Render on deploy
 !cache-seed/
 !cache-seed/**
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
