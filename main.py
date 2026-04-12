@@ -182,7 +182,16 @@ async def on_startup() -> None:
         os.environ["JWT_SECRET_KEY"] = "dev-secret-change-in-production"
         logger.warning("JWT_SECRET_KEY not set — using dev fallback (NOT for production)")
 
-    # 0b. Initialise auth database tables + seed sample users
+    # 0b. Reset auth DB if flagged (set RESET_AUTH_DB=1 in Render env vars, then remove after deploy)
+    if os.environ.get("RESET_AUTH_DB") == "1":
+        auth_db_path = ROOT / "auth.db"
+        for suffix in ["", "-wal", "-shm"]:
+            p = auth_db_path.with_name(auth_db_path.name + suffix)
+            if p.exists():
+                p.unlink()
+        logger.info("Auth DB reset (RESET_AUTH_DB=1)")
+
+    # 0c. Initialise auth database tables + seed sample users
     _init_db()
     init_auth_db()
     seed_sample_users()
