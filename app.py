@@ -37,8 +37,7 @@ from data.fetcher   import (fetch_one, compute_sector_medians,
                              save_scan_summary, load_scan_summary,
                              any_cache_exists, cache_age_hours,
                              _cache_is_fresh, _load_cache)   # public API usage
-from utils.scoring  import (score_all, score_label, score_colour, score_bg,
-                             DEFAULT_QUALITY_THRESHOLDS)
+from utils.scoring_engine import (score_all, score_label, score_colour, score_bg)
 from utils.helpers  import (_f, _fmt_pct, _fmt_ratio, _fmt_price, _fmt_aum)  # shared helpers
 from utils.verdicts import add_verdicts
 from utils.signals        import load_latest_signals, get_last_run_time, signals_summary
@@ -4300,8 +4299,8 @@ def _refresh_single_ticker(wl_entry: dict):
     qt = _build_quality_thresholds()
     sw = _build_scoring_weights()
 
-    from utils.scoring import score_instrument
-    scored = score_instrument(raw, sm, qt, sw)
+    from utils.scoring_engine import score_all as _score_all
+    scored = _score_all([raw], sm, qt, sw)[0]
 
     # Add verdicts for this one instrument
     from utils.verdicts import add_verdicts

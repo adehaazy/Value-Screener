@@ -472,6 +472,6 @@ def load_scan_summary():
 # -- Sector medians --
 
 def compute_sector_medians(instruments):
-    from utils.scoring import compute_sector_medians as _csm
+    from utils.scoring_engine import compute_sector_medians as _csm
     return _csm(instruments)
 

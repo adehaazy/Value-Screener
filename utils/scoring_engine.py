@@ -671,6 +671,15 @@ def build_sector_medians(instruments: list[InstrumentInput]) -> dict[str, dict[s
     return result
 
 
+def compute_sector_medians(instruments: list[dict]) -> dict[str, dict[str, float]]:
+    """
+    Backwards-compatible wrapper: accepts raw dicts (yfinance format),
+    converts to InstrumentInput, then delegates to build_sector_medians.
+    """
+    inst_list = [_inst_from_dict(d) for d in instruments]
+    return build_sector_medians(inst_list)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SECTION 6: SCORING — NON-FINANCIAL STOCKS
 # ══════════════════════════════════════════════════════════════════════════════

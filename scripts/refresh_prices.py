@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 from data.universe import UNIVERSE
 from data.fetcher  import refresh_all_prices, save_scan_summary, fetch_one
-from utils.scoring import score_all, compute_sector_medians as _csm
+from utils.scoring_engine import score_all, compute_sector_medians as _csm
 from utils.verdicts import add_verdicts
 
 def main():
@@ -66,8 +66,8 @@ def main():
 
     # Rebuild scan summary so the dashboard tiles are current
     print("\nUpdating scan summary...")
-    from utils.scoring import score_all, DEFAULT_QUALITY_THRESHOLDS
-    scored = score_all(results, _csm(results), DEFAULT_QUALITY_THRESHOLDS, {})
+    from utils.scoring_engine import score_all
+    scored = score_all(results, _csm(results))
     scored = add_verdicts(scored, _csm(results))
     ok_scored = [x for x in scored if x.get("ok")]
 

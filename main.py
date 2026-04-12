@@ -41,7 +41,7 @@ from typing import Any, Optional
 
 import threading
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -78,7 +78,7 @@ from utils.signal_enricher import get_macro_context, get_uk_macro_context
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 from database import init_db as _init_db
-from auth_api import router as auth_router, init_auth_db, seed_sample_users
+from auth_api import router as auth_router, init_auth_db, seed_sample_users, get_current_user
 
 import logging
 logging.basicConfig(
@@ -565,7 +565,7 @@ def get_briefing() -> dict:
 
 
 @app.post("/api/briefing/refresh", summary="Lightweight briefing refresh")
-def refresh_briefing(background_tasks: BackgroundTasks) -> dict:
+def refresh_briefing(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)) -> dict:
     """
     Triggers a fast briefing refresh: re-fetches macro data + RSS news +
     Yahoo Finance watchlist news. Does NOT re-score the full universe.
@@ -575,7 +575,7 @@ def refresh_briefing(background_tasks: BackgroundTasks) -> dict:
     try:
         # Load watchlist tickers
         from user_data import load_watchlist as _load_wl
-        wl_items = _load_wl(user_id=None)
+        wl_items = _load_wl(user_id=user["user_id"])
         watchlist_tickers = [
             (i.get("ticker", i) if isinstance(i, dict) else i)
             for i in wl_items
@@ -761,14 +761,15 @@ def get_signals() -> dict:
 
 
 @app.get("/api/watchlist", summary="Watchlist with live data")
-def get_watchlist() -> dict:
+def get_watchlist(user: dict = Depends(get_current_user)) -> dict:
     """
     Returns the user's saved watchlist tickers with scored instrument data.
     Instruments in UNIVERSE use cached scores; tickers added manually are
     fetched and scored on the fly.
     """
     try:
-        watchlist_items: list[dict] = load_watchlist(user_id=None)
+        uid = user["user_id"]
+        watchlist_items: list[dict] = load_watchlist(user_id=uid)
         watchlist_tickers: list[str] = [
             i.get("ticker", i) if isinstance(i, dict) else i
             for i in watchlist_items
@@ -825,18 +826,19 @@ def get_watchlist() -> dict:
 
 
 @app.post("/api/watchlist", summary="Add ticker to watchlist", status_code=200)
-def add_watchlist_item(body: dict) -> dict:
+def add_watchlist_item(body: dict, user: dict = Depends(get_current_user)) -> dict:
     """
     Add a ticker to the watchlist.
     Body: { "ticker": "BP.L", "name": "BP plc" }
     No-op if ticker is already present.
     """
     try:
+        uid = user["user_id"]
         ticker = (body.get("ticker") or "").upper().strip()
         if not ticker:
             raise HTTPException(status_code=422, detail="ticker is required")
         name = body.get("name") or ticker
-        _add_to_watchlist(user_id=None, item={"ticker": ticker, "name": name})
+        _add_to_watchlist(user_id=uid, item={"ticker": ticker, "name": name})
         return {"ok": True, "ticker": ticker, "action": "added"}
     except HTTPException:
         raise
@@ -845,21 +847,22 @@ def add_watchlist_item(body: dict) -> dict:
 
 
 @app.delete("/api/watchlist/{ticker}", summary="Remove ticker from watchlist")
-def delete_watchlist_item(ticker: str) -> dict:
+def delete_watchlist_item(ticker: str, user: dict = Depends(get_current_user)) -> dict:
     """
     Remove a ticker from the watchlist by ticker symbol.
     Returns 404 if the ticker is not on the watchlist.
     """
     try:
+        uid = user["user_id"]
         ticker = ticker.upper().strip()
-        current = load_watchlist(user_id=None)
+        current = load_watchlist(user_id=uid)
         tickers = [
             (i.get("ticker", i) if isinstance(i, dict) else i)
             for i in current
         ]
         if ticker not in tickers:
             raise HTTPException(status_code=404, detail=f"{ticker} not found in watchlist")
-        remove_from_watchlist(user_id=None, ticker=ticker)
+        remove_from_watchlist(user_id=uid, ticker=ticker)
         return {"ok": True, "ticker": ticker, "action": "removed"}
     except HTTPException:
         raise
@@ -1684,7 +1687,7 @@ def _enrich_holding(h: dict, universe_map: dict[str, dict]) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/portfolio", summary="Portfolio holdings with live scored data")
-def get_portfolio() -> dict:
+def get_portfolio(user: dict = Depends(get_current_user)) -> dict:
     """
     Returns the user's portfolio holdings merged with live scored instrument data.
 
@@ -1704,7 +1707,8 @@ def get_portfolio() -> dict:
     `target_weight` — positive means the position is over-weight, negative under-weight.
     """
     try:
-        raw_holdings: list[dict] = load_holdings(user_id=None)
+        uid = user["user_id"]
+        raw_holdings: list[dict] = load_holdings(user_id=uid)
 
         if not raw_holdings:
             return {
@@ -1760,7 +1764,7 @@ def get_portfolio() -> dict:
 
 
 @app.post("/api/portfolio", summary="Add or update a holding", status_code=200)
-def upsert_holding(body: HoldingIn) -> dict:
+def upsert_holding(body: HoldingIn, user: dict = Depends(get_current_user)) -> dict:
     """
     Add a new holding or update an existing one (upsert by ticker).
 
@@ -1771,6 +1775,7 @@ def upsert_holding(body: HoldingIn) -> dict:
     second GET request.
     """
     try:
+        uid = user["user_id"]
         ticker = body.ticker.upper().strip()
         item   = {
             "ticker":        ticker,
@@ -1783,10 +1788,10 @@ def upsert_holding(body: HoldingIn) -> dict:
         }
 
         # Load, replace-or-append, save
-        holdings = load_holdings(user_id=None)
+        holdings = load_holdings(user_id=uid)
         holdings = [h for h in holdings if h.get("ticker", "").upper() != ticker]
         holdings.append(item)
-        save_holdings(user_id=None, items=holdings)
+        save_holdings(user_id=uid, items=holdings)
 
         return {"ok": True, "ticker": ticker, "action": "upserted"}
     except Exception as exc:
@@ -1794,21 +1799,22 @@ def upsert_holding(body: HoldingIn) -> dict:
 
 
 @app.delete("/api/portfolio/{ticker}", summary="Remove a holding")
-def delete_holding(ticker: str) -> dict:
+def delete_holding(ticker: str, user: dict = Depends(get_current_user)) -> dict:
     """
     Remove a holding from the portfolio by ticker.
     Returns 404 if the ticker is not in the portfolio.
     """
     try:
+        uid = user["user_id"]
         ticker = ticker.upper().strip()
-        holdings = load_holdings(user_id=None)
+        holdings = load_holdings(user_id=uid)
         before   = len(holdings)
         holdings = [h for h in holdings if h.get("ticker", "").upper() != ticker]
 
         if len(holdings) == before:
             raise HTTPException(status_code=404, detail=f"{ticker} not found in portfolio")
 
-        save_holdings(user_id=None, items=holdings)
+        save_holdings(user_id=uid, items=holdings)
         return {"ok": True, "ticker": ticker, "action": "deleted"}
     except HTTPException:
         raise
@@ -1918,6 +1924,7 @@ def get_market_indices() -> dict:
 @app.get("/api/portfolio/performance", summary="Portfolio holdings price history for charting")
 def get_portfolio_performance(
     period: str = Query("1y", description="yfinance period string: 1mo, 3mo, 6mo, ytd, 1y, 5y"),
+    user: dict = Depends(get_current_user),
 ) -> dict:
     """
     Returns time-series data for each portfolio holding (price history).
@@ -1927,7 +1934,7 @@ def get_portfolio_performance(
         import yfinance as yf
         import pandas as pd
 
-        holdings = load_holdings(user_id=None)
+        holdings = load_holdings(user_id=user["user_id"])
         if not holdings:
             return {"ok": True, "holdings": [], "portfolio": [], "period": period}
 
