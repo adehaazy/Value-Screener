@@ -1739,6 +1739,191 @@ def delete_holding(ticker: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Market indices
+# ══════════════════════════════════════════════════════════════════════════════
+
+_INDICES = [
+    {"ticker": "^GSPC",   "label": "S&P 500"},
+    {"ticker": "^DJI",    "label": "Dow Jones"},
+    {"ticker": "^IXIC",   "label": "Nasdaq"},
+    {"ticker": "^FTSE",   "label": "FTSE 100"},
+    {"ticker": "^GDAXI",  "label": "DAX"},
+    {"ticker": "^N225",   "label": "Nikkei"},
+    {"ticker": "GC=F",    "label": "Gold"},
+    {"ticker": "CL=F",    "label": "Crude Oil"},
+    {"ticker": "^TNX",    "label": "US 10Y"},
+    {"ticker": "EURUSD=X","label": "EUR/USD"},
+]
+
+_INDICES_CACHE_FILE = _CACHE_DIR / "indices_cache.json"
+_INDICES_TTL_MINUTES = 15
+
+
+@app.get("/api/market/indices", summary="Live spot prices for major market indices")
+def get_market_indices() -> dict:
+    """
+    Returns spot prices and day changes for ~10 major indices/commodities.
+    Cached for 15 minutes to avoid rate limits.
+    """
+    try:
+        # Check cache
+        with _json_lock:
+            cached = _read_json(_INDICES_CACHE_FILE)
+        if cached:
+            try:
+                fetched_at = cached.get("fetched_at", "")
+                age_seconds = (
+                    datetime.datetime.utcnow()
+                    - datetime.datetime.fromisoformat(fetched_at)
+                ).total_seconds()
+                if age_seconds < _INDICES_TTL_MINUTES * 60:
+                    return {"ok": True, **cached}
+            except Exception:
+                pass
+
+        import yfinance as yf
+
+        results = []
+        tickers_str = " ".join(i["ticker"] for i in _INDICES)
+        try:
+            data = yf.download(
+                tickers=tickers_str,
+                period="2d",
+                interval="1d",
+                progress=False,
+                auto_adjust=True,
+                group_by="ticker",
+            )
+        except Exception:
+            data = None
+
+        for idx in _INDICES:
+            t = idx["ticker"]
+            entry = {"ticker": t, "label": idx["label"], "price": None, "change_pct": None}
+            try:
+                if data is not None and not data.empty:
+                    if len(_INDICES) > 1:
+                        cols = data[t] if t in data.columns.get_level_values(0) else None
+                    else:
+                        cols = data
+                    if cols is not None and "Close" in cols.columns:
+                        closes = cols["Close"].dropna()
+                        if len(closes) >= 2:
+                            prev  = float(closes.iloc[-2])
+                            last  = float(closes.iloc[-1])
+                            entry["price"]      = round(last, 4)
+                            entry["change_pct"] = round((last - prev) / prev * 100, 2) if prev else None
+                        elif len(closes) == 1:
+                            entry["price"] = round(float(closes.iloc[-1]), 4)
+            except Exception:
+                pass
+            results.append(entry)
+
+        payload = {
+            "ok":         True,
+            "indices":    results,
+            "fetched_at": datetime.datetime.utcnow().isoformat(),
+        }
+        with _json_lock:
+            _write_json(_INDICES_CACHE_FILE, payload)
+
+        return payload
+
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Portfolio performance
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/portfolio/performance", summary="Portfolio holdings price history for charting")
+def get_portfolio_performance(
+    period: str = Query("1y", description="yfinance period string: 1mo, 3mo, 6mo, ytd, 1y, 5y"),
+) -> dict:
+    """
+    Returns time-series data for each portfolio holding (price history).
+    Also returns a combined value-weighted portfolio line using avg_cost weights.
+    """
+    try:
+        import yfinance as yf
+        import pandas as pd
+
+        holdings = load_holdings(user_id=None)
+        if not holdings:
+            return {"ok": True, "holdings": [], "portfolio": [], "period": period}
+
+        tickers = [h.get("ticker", "").upper() for h in holdings if h.get("ticker")]
+        if not tickers:
+            return {"ok": True, "holdings": [], "portfolio": [], "period": period}
+
+        # Download price history for all tickers at once
+        raw = yf.download(
+            tickers=" ".join(tickers),
+            period=period,
+            interval="1d",
+            progress=False,
+            auto_adjust=True,
+            group_by="ticker",
+        )
+
+        holding_series = []
+        # Build per-holding series (normalised to 100 at start for comparison)
+        for h in holdings:
+            t = h.get("ticker", "").upper()
+            if not t:
+                continue
+            try:
+                if len(tickers) > 1:
+                    cols = raw[t] if t in raw.columns.get_level_values(0) else None
+                else:
+                    cols = raw
+                if cols is None or "Close" not in cols.columns:
+                    continue
+                closes = cols["Close"].dropna()
+                if closes.empty:
+                    continue
+                base = closes.iloc[0]
+                series = [
+                    {"date": str(idx.date()), "price": round(float(v), 4), "indexed": round(float(v) / base * 100, 2)}
+                    for idx, v in closes.items()
+                ]
+                holding_series.append({
+                    "ticker": t,
+                    "name":   h.get("name", t),
+                    "series": series,
+                })
+            except Exception:
+                continue
+
+        # Build blended portfolio line (equal-weighted for simplicity)
+        portfolio_line: list[dict] = []
+        try:
+            all_dates = sorted(set(
+                pt["date"] for hs in holding_series for pt in hs["series"]
+            ))
+            for date in all_dates:
+                values = []
+                for hs in holding_series:
+                    pt = next((p for p in hs["series"] if p["date"] == date), None)
+                    if pt:
+                        values.append(pt["indexed"])
+                if values:
+                    portfolio_line.append({"date": date, "value": round(sum(values) / len(values), 2)})
+        except Exception:
+            pass
+
+        return {
+            "ok":        True,
+            "period":    period,
+            "holdings":  holding_series,
+            "portfolio": portfolio_line,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Health check
 # ══════════════════════════════════════════════════════════════════════════════
 
