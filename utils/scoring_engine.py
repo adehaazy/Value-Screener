@@ -1328,6 +1328,8 @@ def score_instrument(
             "data_flag":                  data_flag,
             "data_penalty":               data_penalty,
             "score_components":           {},
+            "score_coverage":             0.0,
+            "derived":                    {},
             "penalties":                  ["Insufficient Data — not scored"],
             "flags":                      [],
         }
