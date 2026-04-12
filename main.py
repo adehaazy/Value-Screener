@@ -14,6 +14,8 @@ GET    /api/macro             — macro indicator data (US + UK)
 GET    /api/portfolio         — holdings merged with live scored data + summary stats
 POST   /api/portfolio         — add or update a holding (upsert by ticker)
 DELETE /api/portfolio/{ticker} — remove a holding
+GET    /api/price-history     — OHLCV price history for a ticker (yfinance)
+GET    /api/deepdive          — full instrument record + AI investment thesis
 
 Run
 ---
@@ -30,13 +32,16 @@ Dependencies (add to requirements.txt if not already present)
 
 from __future__ import annotations
 
+import os
 import sys
+import json
+import datetime
 from pathlib import Path
 from typing import Any, Optional
 
 import threading
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -56,7 +61,8 @@ from data.fetcher import (
 from utils.scoring import score_all, score_label, score_colour, DEFAULT_QUALITY_THRESHOLDS
 from utils.verdicts import add_verdicts
 from utils.signals import load_latest_signals, get_last_run_time, signals_summary
-from surveillance.briefing import load_briefing
+from surveillance.briefing import load_briefing, generate_briefing
+from data.sources import fetch_news, run_all_sources
 from user_data import (
     load_watchlist,
     save_watchlist,
@@ -69,6 +75,18 @@ from user_data import (
     remove_from_holdings,
 )
 from utils.signal_enricher import get_macro_context, get_uk_macro_context
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+from database import init_db as _init_db
+from auth_api import router as auth_router, init_auth_db, seed_sample_users
+
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+logger = logging.getLogger("value_screener")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # App setup
@@ -89,6 +107,92 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Include auth routes ──────────────────────────────────────────────────────
+app.include_router(auth_router)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Startup — seed cache + background warm-up
+# ══════════════════════════════════════════════════════════════════════════════
+
+import asyncio
+import shutil
+
+_SEED_DIR = ROOT / "cache-seed"
+
+
+def _seed_cache() -> None:
+    """
+    Copy files from cache-seed/ into cache/ for any that don't already exist.
+    This ensures Render always starts with a pre-warmed cache after a deploy,
+    rather than an empty one that forces a slow full rebuild on first request.
+    """
+    if not _SEED_DIR.exists():
+        return
+    cache_dir = ROOT / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    for src in _SEED_DIR.rglob("*"):
+        if src.is_file():
+            rel = src.relative_to(_SEED_DIR)
+            dst = cache_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if not dst.exists():
+                shutil.copy2(src, dst)
+    logger.info("Cache seeded from cache-seed/")
+
+
+def _background_warm_up() -> None:
+    """
+    Triggered on startup: refreshes the screener cache in the background so
+    data is fresh without blocking the first incoming request.
+    Only runs if a seed cache is already in place (so first request is fast).
+    """
+    logger.info("Background warm-up started")
+    try:
+        import time as _time
+        from data.universe import UNIVERSE
+        from data.fetcher import fetch_one
+
+        tickers = [
+            (ticker, name, meta.get("asset_class", "Stock"), group)
+            for group, meta in UNIVERSE.items()
+            for ticker, name in meta["tickers"].items()
+        ]
+        batch_size = 50
+        total = len(tickers)
+        for i in range(0, total, batch_size):
+            batch = tickers[i:i + batch_size]
+            for ticker, name, asset_class, group in batch:
+                try:
+                    fetch_one(ticker, name, asset_class, group, force_refresh=False)
+                except Exception:
+                    pass
+            done = min(i + batch_size, total)
+            logger.info("Warm-up: %d/%d tickers processed", done, total)
+            _time.sleep(1)
+        logger.info("Background warm-up complete")
+    except Exception:
+        logger.exception("Background warm-up failed")
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    # 0. Ensure JWT secret exists (dev fallback)
+    if not os.environ.get("JWT_SECRET_KEY"):
+        os.environ["JWT_SECRET_KEY"] = "dev-secret-change-in-production"
+        logger.warning("JWT_SECRET_KEY not set — using dev fallback (NOT for production)")
+
+    # 0b. Initialise auth database tables + seed sample users
+    _init_db()
+    init_auth_db()
+    seed_sample_users()
+    # 1. Seed cache from committed snapshot (instant — just file copies)
+    _seed_cache()
+    # 2. Kick off a background refresh so data freshens without blocking users
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(None, _background_warm_up)
+    logger.info("Server startup complete")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Helpers
@@ -106,6 +210,126 @@ def _safe_float(value: Any) -> Any:
         return value
     except Exception:
         return value
+
+
+# ── Persistent cache file paths ───────────────────────────────────────────────
+_CACHE_DIR       = ROOT / "cache"
+_THESIS_CACHE    = _CACHE_DIR / "thesis_cache.json"
+_RATE_LIMIT_FILE = _CACHE_DIR / "thesis_rate.json"
+_DIVIDEND_CACHE  = _CACHE_DIR / "dividend_cache.json"
+
+_THESIS_TTL_DAYS   = 7
+_DIVIDEND_TTL_DAYS = 30
+_THESIS_DAILY_LIMIT = 5
+
+_json_lock = threading.Lock()
+
+
+def _read_json(path: Path) -> dict:
+    """Read a JSON file; return {} on missing or corrupt."""
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _write_json(path: Path, data: dict) -> None:
+    """Atomically write data to a JSON file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+# ── Thesis cache ───────────────────────────────────────────────────────────────
+
+def _thesis_cache_get(ticker: str) -> str | None:
+    """Return cached thesis if it exists and is < THESIS_TTL_DAYS old, else None."""
+    with _json_lock:
+        store = _read_json(_THESIS_CACHE)
+        entry = store.get(ticker.upper())
+        if not entry:
+            return None
+        try:
+            age = (datetime.datetime.utcnow() - datetime.datetime.fromisoformat(entry["generated_at"])).days
+            if age < _THESIS_TTL_DAYS:
+                return entry["thesis"]
+        except Exception:
+            logger.warning("Corrupt thesis cache entry for %s", ticker)
+    return None
+
+
+def _thesis_cache_set(ticker: str, thesis: str) -> None:
+    """Persist a thesis to the cache."""
+    with _json_lock:
+        store = _read_json(_THESIS_CACHE)
+        store[ticker.upper()] = {
+            "thesis":       thesis,
+            "generated_at": datetime.datetime.utcnow().isoformat(),
+        }
+        _write_json(_THESIS_CACHE, store)
+
+
+# ── Rate limiter ───────────────────────────────────────────────────────────────
+
+def _rate_limit_check(ip: str) -> tuple[bool, int]:
+    """
+    Returns (allowed, calls_remaining_today).
+    Counts calls made by `ip` today (UTC date).
+    Limit resets at midnight UTC.
+    """
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    with _json_lock:
+        store = _read_json(_RATE_LIMIT_FILE)
+        record = store.get(ip, {})
+        if record.get("date") != today:
+            record = {"date": today, "count": 0}
+        count = record.get("count", 0)
+    return count < _THESIS_DAILY_LIMIT, max(0, _THESIS_DAILY_LIMIT - count)
+
+
+def _rate_limit_increment(ip: str) -> None:
+    """Record one thesis generation for `ip` today."""
+    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    with _json_lock:
+        store = _read_json(_RATE_LIMIT_FILE)
+        record = store.get(ip, {})
+        if record.get("date") != today:
+            record = {"date": today, "count": 0}
+        record["count"] = record.get("count", 0) + 1
+        store[ip] = record
+        _write_json(_RATE_LIMIT_FILE, store)
+
+
+# ── Dividend cache ─────────────────────────────────────────────────────────────
+
+def _dividend_cache_get(ticker: str) -> dict | None:
+    """Return cached dividend data if < DIVIDEND_TTL_DAYS old, else None."""
+    with _json_lock:
+        store = _read_json(_DIVIDEND_CACHE)
+        entry = store.get(ticker.upper())
+        if not entry:
+            return None
+        try:
+            age = (datetime.datetime.utcnow() - datetime.datetime.fromisoformat(entry["generated_at"])).days
+            if age < _DIVIDEND_TTL_DAYS:
+                return entry
+        except Exception:
+            logger.warning("Corrupt dividend cache entry for %s", ticker)
+    return None
+
+
+def _dividend_cache_set(ticker: str, data: dict) -> None:
+    """Persist dividend data for a ticker."""
+    with _json_lock:
+        store = _read_json(_DIVIDEND_CACHE)
+        store[ticker.upper()] = {
+            **data,
+            "generated_at": datetime.datetime.utcnow().isoformat(),
+        }
+        _write_json(_DIVIDEND_CACHE, store)
 
 
 def _clean_record(record: dict) -> dict:
@@ -128,9 +352,15 @@ def _build_from_cache() -> tuple[list[dict], dict] | None:
     """
     Build a scored instrument list using ONLY cached data — no network calls.
     Returns (instruments, sector_medians) or None if the cache is completely empty.
-    Fast: reads all rows from SQLite in a single query.
+
+    Always returns ALL universe instruments. Instruments with no cache entry are
+    included as stubs with score=None so the frontend can show them as "pending".
+    Returns None only if the cache is completely empty (no data at all).
     """
     raw: list[dict] = []
+    stubs: list[dict] = []
+    has_any_cache = False
+
     for group, meta in UNIVERSE.items():
         asset_class = meta.get("asset_class", "Stock")
         for ticker, name in meta["tickers"].items():
@@ -140,10 +370,24 @@ def _build_from_cache() -> tuple[list[dict], dict] | None:
                 cached.setdefault("asset_class", asset_class)
                 cached.setdefault("group", group)
                 raw.append(cached)
+                has_any_cache = True
+            else:
+                # Include as a stub so the screener always shows all instruments
+                stubs.append({
+                    "ticker":     ticker,
+                    "name":       name,
+                    "asset_class": asset_class,
+                    "group":      group,
+                    "score":      None,
+                    "score_label": "Pending",
+                    "score_colour": "grey",
+                    "pending":    True,
+                })
 
-    if not raw:
+    if not has_any_cache:
         return None
 
+    # Score cached instruments; stubs pass through un-scored
     sector_medians = compute_sector_medians(raw)
     scored = score_all(raw, sector_medians)
     enriched = add_verdicts(scored, sector_medians)
@@ -152,7 +396,8 @@ def _build_from_cache() -> tuple[list[dict], dict] | None:
         if score is not None:
             inst["score_label"] = score_label(score)
             inst["score_colour"] = score_colour(score)
-    return enriched, sector_medians
+
+    return enriched + stubs, sector_medians
 
 
 # Background refresh state — prevents concurrent full-universe fetches
@@ -270,8 +515,8 @@ def get_screener(background_tasks: BackgroundTasks, refresh: bool = False) -> di
 @app.get("/api/briefing", summary="Market briefing")
 def get_briefing() -> dict:
     """
-    Returns the most recently generated market briefing.
-    Produced by surveillance/briefing.py and persisted to disk.
+    Returns the most recently generated market briefing with staleness metadata.
+    Includes age_hours and stale flag (>4 hours) so the frontend can show a warning.
     """
     try:
         briefing = load_briefing()
@@ -280,10 +525,204 @@ def get_briefing() -> dict:
                 "ok": False,
                 "briefing": None,
                 "message": "No briefing generated yet. Run a surveillance scan first.",
+                "age_hours": None,
+                "stale": True,
             }
+
+        # Compute age
+        age_hours = None
+        stale = False
+        generated_at = briefing.get("generated_at")
+        if generated_at:
+            try:
+                gen_dt = datetime.datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+                if gen_dt.tzinfo is None:
+                    gen_dt = gen_dt.replace(tzinfo=datetime.timezone.utc)
+                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                age_hours = round((now_utc - gen_dt).total_seconds() / 3600, 1)
+                stale = age_hours > 4
+            except Exception:
+                pass
+
+        cleaned = _clean_record(briefing) if isinstance(briefing, dict) else briefing
         return {
-            "ok": True,
-            "briefing": _clean_record(briefing) if isinstance(briefing, dict) else briefing,
+            "ok":         True,
+            "briefing":   cleaned,
+            "age_hours":  age_hours,
+            "stale":      stale,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/briefing/refresh", summary="Lightweight briefing refresh")
+def refresh_briefing(background_tasks: BackgroundTasks) -> dict:
+    """
+    Triggers a fast briefing refresh: re-fetches macro data + RSS news +
+    Yahoo Finance watchlist news. Does NOT re-score the full universe.
+    Typically completes in 5–20 seconds. Results are persisted to
+    cache/briefing.json so the next GET /api/briefing serves fresh data.
+    """
+    try:
+        # Load watchlist tickers
+        from user_data import load_watchlist as _load_wl
+        wl_items = _load_wl(user_id=None)
+        watchlist_tickers = [
+            (i.get("ticker", i) if isinstance(i, dict) else i)
+            for i in wl_items
+        ]
+
+        # Use cached instruments (no full fetch) for the briefing
+        cached_result = _build_from_cache()
+        if cached_result:
+            instruments, _ = cached_result
+        else:
+            instruments = []
+
+        # Load signals from cache (don't re-run)
+        signals = load_latest_signals()
+
+        # Refresh surveillance data — macro + news only (fast path)
+        surveillance_data = run_all_sources(
+            tickers=watchlist_tickers,
+            force=True,
+        )
+
+        briefing = generate_briefing(
+            instruments=instruments,
+            signals=signals,
+            surveillance_data=surveillance_data,
+            watchlist=watchlist_tickers,
+        )
+
+        cleaned = _clean_record(briefing) if isinstance(briefing, dict) else briefing
+        return {
+            "ok":       True,
+            "briefing": cleaned,
+            "age_hours": 0,
+            "stale":    False,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/briefing/news", summary="Watchlist-prioritised news feed")
+def get_briefing_news(
+    tickers: str = Query("", description="Comma-separated watchlist tickers for prioritised headlines"),
+) -> dict:
+    """
+    Returns a news feed combining:
+    1. Yahoo Finance per-ticker news for watchlist instruments (prioritised)
+    2. General RSS headlines (Reuters, BBC, FT) as market context
+
+    Watchlist news is cached per-ticker for 1 hour.
+    General RSS news uses the existing surveillance cache (1 hour TTL).
+    """
+    try:
+        try:
+            import yfinance as yf
+        except ImportError:
+            yf = None
+
+        ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+
+        # ── 1. Yahoo Finance per-ticker news ─────────────────────────────────
+        _NEWS_CACHE_DIR = _CACHE_DIR / "yf_news"
+        _NEWS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _NEWS_TTL_HOURS = 1
+
+        watchlist_news: list[dict] = []
+
+        if yf and ticker_list:
+            for ticker in ticker_list:
+                cache_file = _NEWS_CACHE_DIR / f"{ticker}.json"
+                # Check cache freshness
+                use_cache = False
+                if cache_file.exists():
+                    age_h = (
+                        datetime.datetime.utcnow()
+                        - datetime.datetime.utcfromtimestamp(cache_file.stat().st_mtime)
+                    ).total_seconds() / 3600
+                    use_cache = age_h < _NEWS_TTL_HOURS
+
+                if use_cache:
+                    try:
+                        items = json.loads(cache_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        items = []
+                else:
+                    items = []
+                    try:
+                        t_obj = yf.Ticker(ticker)
+                        raw_news = t_obj.news or []
+                        for article in raw_news[:8]:
+                            content = article.get("content", {})
+                            # yfinance >=0.2.x wraps articles in a 'content' dict
+                            title = (
+                                content.get("title")
+                                or article.get("title", "")
+                            )
+                            link = (
+                                content.get("canonicalUrl", {}).get("url")
+                                or article.get("link", "")
+                            )
+                            publisher = (
+                                content.get("provider", {}).get("displayName")
+                                or article.get("publisher", "")
+                            )
+                            pub_time = (
+                                content.get("pubDate")
+                                or article.get("providerPublishTime")
+                            )
+                            if title:
+                                items.append({
+                                    "title":     title,
+                                    "link":      link,
+                                    "publisher": publisher,
+                                    "pub_time":  str(pub_time) if pub_time else None,
+                                    "ticker":    ticker,
+                                })
+                        cache_file.write_text(
+                            json.dumps(items, ensure_ascii=False, indent=2),
+                            encoding="utf-8",
+                        )
+                    except Exception:
+                        pass
+
+                for item in items:
+                    item["source_type"] = "watchlist"
+                    item.setdefault("ticker", ticker)
+                    watchlist_news.append(item)
+
+        # ── 2. General RSS headlines from existing surveillance cache ─────────
+        rss_news: list[dict] = []
+        try:
+            rss_data = fetch_news(tickers=ticker_list or None, force=False)
+            rss_items = rss_data.get("items", [])
+            # Sort by absolute sentiment, cap at 20
+            rss_items_sorted = sorted(
+                rss_items,
+                key=lambda x: abs(x.get("sentiment", 0)),
+                reverse=True,
+            )[:20]
+            for item in rss_items_sorted:
+                rss_news.append({
+                    "title":      item.get("title", ""),
+                    "link":       item.get("link", ""),
+                    "publisher":  item.get("feed", ""),
+                    "pub_time":   item.get("published", ""),
+                    "sentiment":  item.get("sentiment", 0),
+                    "source_type": "market",
+                    "ticker":     None,
+                })
+        except Exception:
+            pass
+
+        return {
+            "ok":             True,
+            "watchlist_news": watchlist_news,
+            "market_news":    rss_news,
+            "tickers":        ticker_list,
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -329,28 +768,41 @@ def get_watchlist() -> dict:
         if not watchlist_tickers:
             return {"ok": True, "tickers": [], "count": 0, "instruments": []}
 
-        # Build a lookup from the full scored universe
-        instruments, sector_medians = _build_instruments()
-        universe_map: dict[str, dict] = {inst["ticker"]: inst for inst in instruments}
+        # Build a universe ticker→meta lookup from UNIVERSE (no fetching)
+        universe_meta: dict[str, tuple[str, str, str]] = {}  # ticker → (name, asset_class, group)
+        for group, meta in UNIVERSE.items():
+            asset_class = meta.get("asset_class", "Stock")
+            for ticker, name in meta["tickers"].items():
+                universe_meta[ticker] = (name, asset_class, group)
 
-        result: list[dict] = []
+        # Fetch only the watchlist tickers — from cache where possible
+        raw: list[dict] = []
         for ticker in watchlist_tickers:
-            if ticker in universe_map:
-                result.append(universe_map[ticker])
-            else:
-                # Ticker is on the watchlist but not in UNIVERSE — fetch directly
-                live = fetch_one(ticker, ticker, "Stock", "Watchlist")
-                if live.get("ok"):
-                    scored_list = score_all([live], {})
-                    enriched = add_verdicts(scored_list, {})
-                    inst = enriched[0] if enriched else live
-                    score = inst.get("score")
-                    if score is not None:
-                        inst["score_label"] = score_label(score)
-                        inst["score_colour"] = score_colour(score)
-                    result.append(inst)
+            if ticker in universe_meta:
+                name, asset_class, group = universe_meta[ticker]
+                inst = _load_cache(ticker)
+                if inst:
+                    inst.setdefault("name", name)
+                    inst.setdefault("asset_class", asset_class)
+                    inst.setdefault("group", group)
+                    raw.append(inst)
                 else:
-                    result.append(live)  # return the error record so caller knows
+                    # Cache miss — fetch live for this one ticker only
+                    raw.append(fetch_one(ticker, name, asset_class, group))
+            else:
+                # Not in UNIVERSE — fetch live
+                raw.append(fetch_one(ticker, ticker, "Stock", "Watchlist"))
+
+        # Score only the watchlist instruments
+        sector_medians = compute_sector_medians(raw)
+        scored = score_all(raw, sector_medians)
+        result_list = add_verdicts(scored, sector_medians)
+        for inst in result_list:
+            sc = inst.get("score")
+            if sc is not None:
+                inst["score_label"] = score_label(sc)
+                inst["score_colour"] = score_colour(sc)
+        result = result_list
 
         clean = [_clean_record(i) for i in result]
         return {
@@ -400,6 +852,725 @@ def delete_watchlist_item(ticker: str) -> dict:
             raise HTTPException(status_code=404, detail=f"{ticker} not found in watchlist")
         remove_from_watchlist(user_id=None, ticker=ticker)
         return {"ok": True, "ticker": ticker, "action": "removed"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/price-history", summary="OHLCV price history for a ticker")
+def get_price_history(
+    ticker: str = Query(..., description="Yahoo Finance ticker, e.g. ABF.L"),
+    period: str = Query("1y", description="One of: 1mo 3mo 6mo ytd 1y 5y"),
+) -> dict:
+    """
+    Returns a time-series of daily closing prices for the requested period.
+    Uses yfinance under the hood; results are NOT cached (called on demand).
+    Response: { ok, ticker, period, data: [{date, price}, ...] }
+    """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
+    try:
+        try:
+            import yfinance as yf
+        except ImportError:
+            raise HTTPException(status_code=500, detail="yfinance not installed")
+
+        # Normalise period to a yfinance-accepted value
+        period_map = {
+            "1m": "1mo", "1mo": "1mo",
+            "3m": "3mo", "3mo": "3mo",
+            "6m": "6mo", "6mo": "6mo",
+            "ytd": "ytd",
+            "1y": "1y",
+            "5y": "5y",
+        }
+        yf_period = period_map.get(period.lower(), "1y")
+
+        hist = yf.Ticker(ticker.upper()).history(period=yf_period)
+        if hist is None or hist.empty:
+            return {"ok": False, "ticker": ticker, "period": period, "data": []}
+
+        data = [
+            {
+                "date": str(idx.date()),
+                "price": round(float(row["Close"]), 4),
+            }
+            for idx, row in hist.iterrows()
+        ]
+        return {"ok": True, "ticker": ticker.upper(), "period": yf_period, "data": data}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+def _generate_thesis(inst: dict, briefing: dict | None) -> str:
+    """
+    Generate an AI investment thesis for `inst` using Claude.
+    Falls back to a data-driven template if the API key is absent or the
+    call fails — so the endpoint always returns something useful.
+    """
+    try:
+        import anthropic as _ant
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set")
+
+        client = _ant.Anthropic(api_key=api_key)
+
+        name        = inst.get("name", inst.get("ticker", ""))
+        ticker      = inst.get("ticker", "")
+        sector      = inst.get("sector", "Unknown")
+        score       = inst.get("score")
+        score_lbl   = inst.get("score_label", "")
+        price       = inst.get("price")
+        currency    = inst.get("currency", "")
+        pe          = inst.get("pe")
+        pb          = inst.get("pb")
+        ev_ebitda   = inst.get("ev_ebitda")
+        div_yield   = inst.get("div_yield")
+        yr1_pct     = inst.get("yr1_pct")
+        roe         = inst.get("roe")
+        revenue     = inst.get("revenue")
+        rev_growth  = inst.get("revenue_growth")
+        earn_growth = inst.get("earnings_growth")
+        debt_eq     = inst.get("debt_equity")
+        market_cap  = inst.get("market_cap")
+        high_52w    = inst.get("high_52w")
+        low_52w     = inst.get("low_52w")
+
+        # Format helpers
+        def _pct(v, decimals=1):
+            if v is None: return "N/A"
+            return f"{v:.{decimals}f}%"
+        def _x(v, decimals=1):
+            if v is None: return "N/A"
+            return f"{v:.{decimals}f}x"
+        def _fmt(v, decimals=2):
+            if v is None: return "N/A"
+            return f"{v:.{decimals}f}"
+
+        # Briefing excerpt (if available and mentions this ticker)
+        briefing_snippet = ""
+        if briefing:
+            full = briefing.get("briefing", "") or ""
+            if isinstance(full, dict):
+                full = full.get("text", "") or ""
+            # Pull any sentence that mentions the ticker or company name
+            import re
+            sentences = re.split(r'(?<=[.!?])\s+', str(full))
+            relevant = [s for s in sentences if ticker in s or name.split()[0] in s]
+            if relevant:
+                briefing_snippet = " ".join(relevant[:3])
+
+        prompt = f"""You are a senior equity analyst writing a concise investment thesis for a professional investor.
+
+Instrument: {name} ({ticker})
+Sector: {sector}
+Composite Score: {score}/100 — {score_lbl}
+
+Key Metrics:
+- Price: {currency} {_fmt(price)}
+- Market Cap: {_fmt(market_cap, 0) if market_cap else 'N/A'}
+- P/E: {_x(pe)}
+- P/B: {_x(pb)}
+- EV/EBITDA: {_x(ev_ebitda)}
+- Dividend Yield: {_pct(div_yield)}
+- 1Y Return: {_pct(yr1_pct)}
+- ROE: {_pct(roe * 100 if roe else None)}
+- Revenue Growth: {_pct(rev_growth * 100 if rev_growth else None)}
+- Earnings Growth: {_pct(earn_growth * 100 if earn_growth else None)}
+- Debt/Equity: {_fmt(debt_eq)}
+- 52W High: {_fmt(high_52w)} / Low: {_fmt(low_52w)}
+{f'Recent context from market briefing: {briefing_snippet}' if briefing_snippet else ''}
+
+Write a 3–4 paragraph investment thesis in the tone of a highly skilled financial analyst. Structure it as:
+1. Opening: What is the company and why it matters right now
+2. Valuation & Quality case (reference the specific metrics above)
+3. Key risks and considerations
+4. Conclusion with a balanced view
+
+Be specific, use the numbers provided, and cite your reasoning. Do not use bullet points — flowing prose only. Do not add headers. Attribute any market context to the briefing where relevant."""
+
+        message = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=700,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip()
+
+    except Exception:
+        # Graceful fallback — deterministic template from data
+        name      = inst.get("name", inst.get("ticker", ""))
+        score     = inst.get("score")
+        score_lbl = inst.get("score_label", "")
+        sector    = inst.get("sector", "")
+        pe        = inst.get("pe")
+        div_yield = inst.get("div_yield")
+        yr1_pct   = inst.get("yr1_pct")
+
+        valuation_note = f"trading on a P/E of {pe:.1f}x" if pe else "with valuation metrics under review"
+        div_note       = f"a dividend yield of {div_yield:.1f}%" if div_yield else "a dividend policy currently under review"
+        return_note    = (f"returning {yr1_pct:.1f}% over the past year" if yr1_pct else "with mixed recent price performance")
+
+        return (
+            f"{name} is a {sector} company currently rated {score_lbl} with a composite score of "
+            f"{round(score) if score else 'N/A'}/100. "
+            f"The company is {valuation_note}, offering {div_note}, and {return_note}. "
+            f"A detailed AI-generated thesis is temporarily unavailable — check back shortly or ensure "
+            f"ANTHROPIC_API_KEY is configured on the server."
+        )
+
+
+@app.get("/api/deepdive", summary="Full instrument record + AI investment thesis")
+def get_deepdive(
+    request: Request,
+    ticker: str = Query(..., description="Yahoo Finance ticker, e.g. ABF.L"),
+) -> dict:
+    """
+    Returns scored instrument data for a single ticker, plus an AI-generated
+    investment thesis written in the style of a senior equity analyst.
+
+    Thesis generation is rate-limited to 5 calls per IP per day (resets midnight UTC).
+    Generated theses are cached server-side for 7 days — subsequent loads of the
+    same ticker serve the cached version instantly at no API cost.
+    Instrument data is served from SQLite cache where possible.
+    """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
+    try:
+        ticker = ticker.upper().strip()
+
+        # ── 1. Resolve instrument data ──────────────────────────────────────
+        universe_meta: dict[str, tuple[str, str, str]] = {}
+        for group, meta in UNIVERSE.items():
+            ac = meta.get("asset_class", "Stock")
+            for t, n in meta["tickers"].items():
+                universe_meta[t] = (n, ac, group)
+
+        if ticker in universe_meta:
+            name, asset_class, group = universe_meta[ticker]
+            raw = _load_cache(ticker)
+            if raw:
+                raw.setdefault("name", name)
+                raw.setdefault("asset_class", asset_class)
+                raw.setdefault("group", group)
+            else:
+                raw = fetch_one(ticker, name, asset_class, group)
+        else:
+            raw = fetch_one(ticker, ticker, "Stock", "Deepdive")
+
+        if not raw or not raw.get("ok"):
+            raise HTTPException(status_code=404, detail=f"No data found for {ticker}")
+
+        # ── 2. Score and enrich ─────────────────────────────────────────────
+        sector_medians = compute_sector_medians([raw])
+        scored         = score_all([raw], sector_medians)
+        enriched       = add_verdicts(scored, sector_medians)
+        inst           = enriched[0] if enriched else raw
+
+        sc = inst.get("score")
+        if sc is not None:
+            inst["score_label"]  = score_label(sc)
+            inst["score_colour"] = score_colour(sc)
+
+        # ── 3. Thesis — cache-first, rate-limit on generation ───────────────
+        cached_thesis = _thesis_cache_get(ticker)
+        thesis_from_cache = cached_thesis is not None
+        thesis_cached_at  = None
+
+        if cached_thesis:
+            # Serve from cache — no API call, no rate-limit deduction
+            thesis = cached_thesis
+            with _json_lock:
+                store = _read_json(_THESIS_CACHE)
+            entry = store.get(ticker, {})
+            thesis_cached_at = entry.get("generated_at")
+        else:
+            # Need to generate — check rate limit first
+            # Respect X-Forwarded-For set by Render's proxy
+            client_ip = (
+                request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                or request.headers.get("x-real-ip", "")
+                or (request.client.host if request.client else "unknown")
+            )
+
+            allowed, remaining = _rate_limit_check(client_ip)
+            if not allowed:
+                # Return instrument data but signal rate limit on thesis
+                return {
+                    "ok":               True,
+                    "ticker":           ticker,
+                    "instrument":       _clean_record(inst),
+                    "thesis":           None,
+                    "thesis_from_cache": False,
+                    "rate_limited":     True,
+                    "rate_limit_reset": "midnight UTC",
+                    "calls_remaining":  0,
+                }
+
+            try:
+                briefing = load_briefing()
+            except Exception:
+                briefing = None
+
+            thesis = _generate_thesis(inst, briefing)
+            _rate_limit_increment(client_ip)
+            _thesis_cache_set(ticker, thesis)
+
+            # Recompute remaining after increment
+            _, remaining = _rate_limit_check(client_ip)
+
+        return {
+            "ok":               True,
+            "ticker":           ticker,
+            "instrument":       _clean_record(inst),
+            "thesis":           thesis,
+            "thesis_from_cache": thesis_from_cache,
+            "thesis_cached_at":  thesis_cached_at,
+            "rate_limited":     False,
+            "calls_remaining":  _THESIS_DAILY_LIMIT if thesis_from_cache else (
+                _rate_limit_check(
+                    request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                    or request.headers.get("x-real-ip", "")
+                    or (request.client.host if request.client else "unknown")
+                )[1]
+            ),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+def _fetch_dividend_data(ticker: str, inst: dict) -> dict:
+    """
+    Fetch dividend data from yfinance (already in instrument cache) and
+    enrich with publicly available data. Returns a structured dict.
+    """
+    try:
+        import yfinance as yf
+    except ImportError:
+        yf = None
+
+    currency = (inst.get("currency") or "").upper()
+    sym = "£" if currency in ("GBP", "GBX") else "$" if currency == "USD" else "€" if currency == "EUR" else ""
+
+    # ── Pull what we already have from the scored instrument ──────────────────
+    div_yield   = inst.get("div_yield")        # already normalised to %
+    payout_ratio = inst.get("payout_ratio")    # decimal (0–1) or None
+    roe         = inst.get("roe")
+    revenue     = inst.get("revenue")
+
+    # ── Pull richer dividend data from yfinance ───────────────────────────────
+    history_rows: list[dict] = []
+    dividends_per_year = None
+    last_dividend_value = None
+    last_ex_date = None
+    five_year_avg_yield = None
+    dividend_growth_3y = None
+
+    try:
+        if yf:
+            t = yf.Ticker(ticker)
+            info = t.fast_info if hasattr(t, "fast_info") else {}
+
+            # Dividend history
+            divs = t.dividends
+            if divs is not None and not divs.empty:
+                # Last 5 years of quarterly/annual history
+                recent = divs.tail(20)
+                history_rows = [
+                    {"date": str(idx.date()), "amount": round(float(v), 6)}
+                    for idx, v in recent.items()
+                ]
+                last_dividend_value = round(float(divs.iloc[-1]), 6) if len(divs) > 0 else None
+                last_ex_date = str(divs.index[-1].date()) if len(divs) > 0 else None
+
+                # Payments per year (approximate from last 2 years)
+                recent_2y = divs[divs.index >= (divs.index[-1] - datetime.timedelta(days=730))]
+                dividends_per_year = round(len(recent_2y) / 2) if len(recent_2y) >= 2 else None
+
+                # 3-year dividend growth (CAGR)
+                if len(history_rows) >= 4:
+                    try:
+                        annual = {}
+                        for row in history_rows:
+                            yr = row["date"][:4]
+                            annual[yr] = annual.get(yr, 0) + row["amount"]
+                        years = sorted(annual.keys())
+                        if len(years) >= 3:
+                            start_val = annual[years[-3]]
+                            end_val   = annual[years[-1]]
+                            if start_val > 0 and end_val > 0:
+                                dividend_growth_3y = round(((end_val / start_val) ** (1 / 2) - 1) * 100, 1)
+                    except Exception:
+                        pass
+
+            # 5-year average yield from yfinance info
+            try:
+                raw_info = t.info
+                five_year_avg_yield = raw_info.get("fiveYearAvgDividendYield")
+                if five_year_avg_yield and five_year_avg_yield < 1.0:
+                    five_year_avg_yield = round(five_year_avg_yield * 100, 2)
+                elif five_year_avg_yield:
+                    five_year_avg_yield = round(float(five_year_avg_yield), 2)
+                payout_ratio = payout_ratio or raw_info.get("payoutRatio")
+            except Exception:
+                pass
+
+    except Exception:
+        pass
+
+    freq_label = {1: "Annual", 2: "Semi-annual", 4: "Quarterly", 12: "Monthly"}.get(
+        dividends_per_year, f"~{dividends_per_year}x/year" if dividends_per_year else "Unknown"
+    )
+
+    return {
+        "ticker":               ticker,
+        "currency":             currency,
+        "symbol":               sym,
+        "div_yield":            div_yield,
+        "five_year_avg_yield":  five_year_avg_yield,
+        "last_dividend":        last_dividend_value,
+        "last_ex_date":         last_ex_date,
+        "payment_frequency":    freq_label,
+        "dividends_per_year":   dividends_per_year,
+        "payout_ratio":         round(float(payout_ratio) * 100, 1) if payout_ratio else None,
+        "dividend_growth_3y":   dividend_growth_3y,
+        "history":              history_rows,
+        "roe":                  round(float(roe) * 100, 1) if roe else None,
+    }
+
+
+def _generate_dividend_summary(ticker: str, div_data: dict, inst: dict) -> str:
+    """
+    Generate an AI dividend analysis using Claude.
+    Falls back to a data-driven template if API key is absent or call fails.
+    """
+    try:
+        import anthropic as _ant
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set")
+
+        client = _ant.Anthropic(api_key=api_key)
+        name = inst.get("name", ticker)
+        sector = inst.get("sector", "Unknown")
+
+        def _fmt(v, suffix="", decimals=1):
+            if v is None: return "N/A"
+            return f"{v:.{decimals}f}{suffix}"
+
+        prompt = f"""You are a senior equity income analyst. Write a concise dividend analysis for {name} ({ticker}).
+
+Company: {name} | Sector: {sector}
+
+Dividend Data:
+- Current Yield: {_fmt(div_data.get('div_yield'), '%')}
+- 5-Year Average Yield: {_fmt(div_data.get('five_year_avg_yield'), '%')}
+- Payment Frequency: {div_data.get('payment_frequency', 'N/A')}
+- Last Dividend Amount: {div_data.get('symbol', '')}{_fmt(div_data.get('last_dividend'), decimals=4)}
+- Last Ex-Dividend Date: {div_data.get('last_ex_date', 'N/A')}
+- Payout Ratio: {_fmt(div_data.get('payout_ratio'), '%')}
+- 3-Year Dividend CAGR: {_fmt(div_data.get('dividend_growth_3y'), '%')}
+- Return on Equity: {_fmt(div_data.get('roe'), '%')}
+
+Write 2–3 paragraphs covering:
+1. Income characteristics — is this a reliable income stock? How does the yield compare to sector norms?
+2. Dividend sustainability — payout ratio, earnings cover, balance sheet capacity
+3. Growth outlook — is the dividend likely to grow, hold, or be at risk?
+
+Be specific, reference the numbers, write in flowing prose (no bullet points or headers).
+Keep it under 250 words. Use the tone of a senior portfolio manager advising a client."""
+
+        message = client.messages.create(
+            model="claude-opus-4-6",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip()
+
+    except Exception:
+        # Deterministic fallback
+        name  = inst.get("name", ticker)
+        dy    = div_data.get("div_yield")
+        pr    = div_data.get("payout_ratio")
+        g3y   = div_data.get("dividend_growth_3y")
+        freq  = div_data.get("payment_frequency", "unknown frequency")
+        parts = []
+        if dy is not None:
+            parts.append(f"{name} currently offers a dividend yield of {dy:.2f}%, paid at {freq}.")
+        if pr is not None:
+            sustainability = "comfortably covered" if pr < 60 else "relatively stretched" if pr > 85 else "broadly sustainable"
+            parts.append(f"The payout ratio of {pr:.1f}% appears {sustainability}.")
+        if g3y is not None:
+            direction = "grown" if g3y > 0 else "declined"
+            parts.append(f"The dividend has {direction} at a {abs(g3y):.1f}% CAGR over the past 3 years.")
+        if not parts:
+            parts.append(f"Dividend data for {name} is limited. Review the latest annual report for income details.")
+        return " ".join(parts)
+
+
+@app.get("/api/dividends", summary="Dividend data and AI income analysis")
+def get_dividends(
+    ticker: str = Query(..., description="Yahoo Finance ticker, e.g. ABF.L"),
+) -> dict:
+    """
+    Returns structured dividend data plus an AI-generated income analysis.
+
+    Data sourced from yfinance (dividend history, yield, payout ratio, frequency).
+    Results are cached for 30 days — dividend policy rarely changes mid-year.
+    AI analysis uses claude-opus-4-6; does NOT count against the thesis rate limit.
+    """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
+    try:
+        ticker = ticker.upper().strip()
+
+        # ── 1. Check cache ──────────────────────────────────────────────────
+        cached = _dividend_cache_get(ticker)
+        if cached:
+            return {"ok": True, "ticker": ticker, "from_cache": True, **cached}
+
+        # ── 2. Load instrument data (for sector/currency context) ────────────
+        universe_meta: dict[str, tuple[str, str, str]] = {}
+        for group, meta in UNIVERSE.items():
+            ac = meta.get("asset_class", "Stock")
+            for t, n in meta["tickers"].items():
+                universe_meta[t] = (n, ac, group)
+
+        if ticker in universe_meta:
+            name, asset_class, group = universe_meta[ticker]
+            inst = _load_cache(ticker) or fetch_one(ticker, name, asset_class, group)
+            if inst:
+                inst.setdefault("name", name)
+        else:
+            inst = fetch_one(ticker, ticker, "Stock", "Dividends")
+
+        if not inst or not inst.get("ok"):
+            raise HTTPException(status_code=404, detail=f"No data found for {ticker}")
+
+        # ── 3. Fetch structured dividend data ────────────────────────────────
+        div_data = _fetch_dividend_data(ticker, inst)
+
+        # ── 4. Generate AI summary ───────────────────────────────────────────
+        summary = _generate_dividend_summary(ticker, div_data, inst)
+        div_data["summary"] = summary
+
+        # ── 5. Cache and return ──────────────────────────────────────────────
+        _dividend_cache_set(ticker, div_data)
+
+        return {"ok": True, "ticker": ticker, "from_cache": False, **div_data}
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/analyses", summary="List all cached investment theses")
+def list_analyses() -> dict:
+    """
+    Returns all server-cached investment theses with metadata.
+    Includes ticker, company name (resolved from UNIVERSE), generated_at,
+    age in days, and a short excerpt of the thesis for display.
+    """
+    try:
+        with _json_lock:
+            store = _read_json(_THESIS_CACHE)
+
+        # Build universe name lookup
+        universe_meta: dict[str, tuple[str, str, str]] = {}
+        for group, meta in UNIVERSE.items():
+            ac = meta.get("asset_class", "Stock")
+            for t, n in meta["tickers"].items():
+                universe_meta[t] = (n, ac, group)
+
+        now = datetime.datetime.utcnow()
+        analyses = []
+        for ticker, entry in store.items():
+            generated_at = entry.get("generated_at")
+            thesis       = entry.get("thesis", "")
+            try:
+                age_days = (now - datetime.datetime.fromisoformat(generated_at)).days
+                expires_in = max(0, _THESIS_TTL_DAYS - age_days)
+            except Exception:
+                age_days   = None
+                expires_in = None
+
+            # Short excerpt — first sentence or first 200 chars
+            excerpt = ""
+            if thesis:
+                first_sentence = thesis.split(".")[0]
+                excerpt = (first_sentence[:200] + "…") if len(first_sentence) > 200 else first_sentence + "."
+
+            name_meta = universe_meta.get(ticker)
+            analyses.append({
+                "ticker":       ticker,
+                "name":         name_meta[0] if name_meta else ticker,
+                "sector":       None,   # resolved from cache below if available
+                "generated_at": generated_at,
+                "age_days":     age_days,
+                "expires_in":   expires_in,
+                "excerpt":      excerpt,
+            })
+
+        # Sort newest first
+        analyses.sort(key=lambda x: x.get("generated_at") or "", reverse=True)
+
+        # Enrich with sector from SQLite cache (best-effort)
+        for item in analyses:
+            try:
+                cached = _load_cache(item["ticker"])
+                if cached:
+                    item["sector"] = cached.get("sector")
+                    if not item.get("name") or item["name"] == item["ticker"]:
+                        item["name"] = cached.get("name", item["ticker"])
+            except Exception:
+                pass
+
+        return {"ok": True, "count": len(analyses), "analyses": analyses}
+
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.delete("/api/analyses/{ticker}", summary="Delete a cached investment thesis")
+def delete_analysis(ticker: str) -> dict:
+    """
+    Removes a ticker's cached thesis from the server cache.
+    Next time /api/deepdive is called for this ticker, a fresh thesis will be
+    generated (subject to the rate limit).
+    """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
+    try:
+        ticker = ticker.upper().strip()
+        with _json_lock:
+            store = _read_json(_THESIS_CACHE)
+            if ticker not in store:
+                raise HTTPException(status_code=404, detail=f"No cached thesis for {ticker}")
+            del store[ticker]
+            _write_json(_THESIS_CACHE, store)
+        return {"ok": True, "ticker": ticker, "action": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/analyses/{ticker}/refresh", summary="Force-refresh a cached investment thesis")
+def refresh_analysis(request: Request, ticker: str) -> dict:
+    """
+    Deletes the existing cached thesis for `ticker` and regenerates it
+    immediately using a fresh Claude call.
+
+    This counts against the caller's daily rate limit (same as /api/deepdive).
+    Returns the full new thesis plus updated metadata.
+    """
+    # Validate ticker
+    if not ticker or not ticker.strip():
+        raise HTTPException(status_code=400, detail="ticker parameter is required")
+    ticker = ticker.strip().upper()
+    if len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker symbol: {ticker}")
+
+    try:
+        ticker = ticker.upper().strip()
+
+        # ── Rate limit check ──────────────────────────────────────────────────
+        # Respect X-Forwarded-For set by Render's proxy
+        client_ip = (
+            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or request.headers.get("x-real-ip", "")
+            or (request.client.host if request.client else "unknown")
+        )
+        allowed, remaining = _rate_limit_check(client_ip)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="Daily thesis generation limit reached. Resets at midnight UTC."
+            )
+
+        # ── Resolve instrument ────────────────────────────────────────────────
+        universe_meta: dict[str, tuple[str, str, str]] = {}
+        for group, meta in UNIVERSE.items():
+            ac = meta.get("asset_class", "Stock")
+            for t, n in meta["tickers"].items():
+                universe_meta[t] = (n, ac, group)
+
+        if ticker in universe_meta:
+            name, asset_class, group = universe_meta[ticker]
+            raw = _load_cache(ticker)
+            if raw:
+                raw.setdefault("name", name)
+                raw.setdefault("asset_class", asset_class)
+                raw.setdefault("group", group)
+            else:
+                raw = fetch_one(ticker, name, asset_class, group)
+        else:
+            raw = fetch_one(ticker, ticker, "Stock", "Analyses")
+
+        if not raw or not raw.get("ok"):
+            raise HTTPException(status_code=404, detail=f"No data found for {ticker}")
+
+        sector_medians = compute_sector_medians([raw])
+        scored         = score_all([raw], sector_medians)
+        enriched       = add_verdicts(scored, sector_medians)
+        inst           = enriched[0] if enriched else raw
+        sc = inst.get("score")
+        if sc is not None:
+            inst["score_label"]  = score_label(sc)
+            inst["score_colour"] = score_colour(sc)
+
+        # ── Delete old cache entry ────────────────────────────────────────────
+        with _json_lock:
+            store = _read_json(_THESIS_CACHE)
+            store.pop(ticker, None)
+            _write_json(_THESIS_CACHE, store)
+
+        # ── Generate fresh thesis ─────────────────────────────────────────────
+        try:
+            briefing = load_briefing()
+        except Exception:
+            briefing = None
+
+        new_thesis = _generate_thesis(inst, briefing)
+        _rate_limit_increment(client_ip)
+        _thesis_cache_set(ticker, new_thesis)
+
+        _, remaining_after = _rate_limit_check(client_ip)
+
+        return {
+            "ok":              True,
+            "ticker":          ticker,
+            "thesis":          new_thesis,
+            "generated_at":    datetime.datetime.utcnow().isoformat(),
+            "calls_remaining": remaining_after,
+        }
+
     except HTTPException:
         raise
     except Exception as exc:
@@ -637,12 +1808,223 @@ def delete_holding(ticker: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Market indices
+# ══════════════════════════════════════════════════════════════════════════════
+
+_INDICES = [
+    {"ticker": "^GSPC",   "label": "S&P 500"},
+    {"ticker": "^DJI",    "label": "Dow Jones"},
+    {"ticker": "^IXIC",   "label": "Nasdaq"},
+    {"ticker": "^FTSE",   "label": "FTSE 100"},
+    {"ticker": "^GDAXI",  "label": "DAX"},
+    {"ticker": "^N225",   "label": "Nikkei"},
+    {"ticker": "GC=F",    "label": "Gold"},
+    {"ticker": "CL=F",    "label": "Crude Oil"},
+    {"ticker": "^TNX",    "label": "US 10Y"},
+    {"ticker": "EURUSD=X","label": "EUR/USD"},
+]
+
+_INDICES_CACHE_FILE = _CACHE_DIR / "indices_cache.json"
+_INDICES_TTL_MINUTES = 15
+
+
+@app.get("/api/market/indices", summary="Live spot prices for major market indices")
+def get_market_indices() -> dict:
+    """
+    Returns spot prices and day changes for ~10 major indices/commodities.
+    Cached for 15 minutes to avoid rate limits.
+    """
+    try:
+        # Check cache
+        with _json_lock:
+            cached = _read_json(_INDICES_CACHE_FILE)
+        if cached:
+            try:
+                fetched_at = cached.get("fetched_at", "")
+                age_seconds = (
+                    datetime.datetime.utcnow()
+                    - datetime.datetime.fromisoformat(fetched_at)
+                ).total_seconds()
+                if age_seconds < _INDICES_TTL_MINUTES * 60:
+                    return {"ok": True, **cached}
+            except Exception:
+                pass
+
+        import yfinance as yf
+
+        results = []
+        tickers_str = " ".join(i["ticker"] for i in _INDICES)
+        try:
+            data = yf.download(
+                tickers=tickers_str,
+                period="2d",
+                interval="1d",
+                progress=False,
+                auto_adjust=True,
+                group_by="ticker",
+            )
+        except Exception:
+            data = None
+
+        for idx in _INDICES:
+            t = idx["ticker"]
+            entry = {"ticker": t, "label": idx["label"], "price": None, "change_pct": None}
+            try:
+                if data is not None and not data.empty:
+                    if len(_INDICES) > 1:
+                        cols = data[t] if t in data.columns.get_level_values(0) else None
+                    else:
+                        cols = data
+                    if cols is not None and "Close" in cols.columns:
+                        closes = cols["Close"].dropna()
+                        if len(closes) >= 2:
+                            prev  = float(closes.iloc[-2])
+                            last  = float(closes.iloc[-1])
+                            entry["price"]      = round(last, 4)
+                            entry["change_pct"] = round((last - prev) / prev * 100, 2) if prev else None
+                        elif len(closes) == 1:
+                            entry["price"] = round(float(closes.iloc[-1]), 4)
+            except Exception:
+                pass
+            results.append(entry)
+
+        payload = {
+            "ok":         True,
+            "indices":    results,
+            "fetched_at": datetime.datetime.utcnow().isoformat(),
+        }
+        with _json_lock:
+            _write_json(_INDICES_CACHE_FILE, payload)
+
+        return payload
+
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Portfolio performance
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/portfolio/performance", summary="Portfolio holdings price history for charting")
+def get_portfolio_performance(
+    period: str = Query("1y", description="yfinance period string: 1mo, 3mo, 6mo, ytd, 1y, 5y"),
+) -> dict:
+    """
+    Returns time-series data for each portfolio holding (price history).
+    Also returns a combined value-weighted portfolio line using avg_cost weights.
+    """
+    try:
+        import yfinance as yf
+        import pandas as pd
+
+        holdings = load_holdings(user_id=None)
+        if not holdings:
+            return {"ok": True, "holdings": [], "portfolio": [], "period": period}
+
+        tickers = [h.get("ticker", "").upper() for h in holdings if h.get("ticker")]
+        if not tickers:
+            return {"ok": True, "holdings": [], "portfolio": [], "period": period}
+
+        # Download price history for all tickers at once
+        raw = yf.download(
+            tickers=" ".join(tickers),
+            period=period,
+            interval="1d",
+            progress=False,
+            auto_adjust=True,
+            group_by="ticker",
+        )
+
+        holding_series = []
+        # Build per-holding series (normalised to 100 at start for comparison)
+        for h in holdings:
+            t = h.get("ticker", "").upper()
+            if not t:
+                continue
+            try:
+                if len(tickers) > 1:
+                    cols = raw[t] if t in raw.columns.get_level_values(0) else None
+                else:
+                    cols = raw
+                if cols is None or "Close" not in cols.columns:
+                    continue
+                closes = cols["Close"].dropna()
+                if closes.empty:
+                    continue
+                base = closes.iloc[0]
+                series = [
+                    {"date": str(idx.date()), "price": round(float(v), 4), "indexed": round(float(v) / base * 100, 2)}
+                    for idx, v in closes.items()
+                ]
+                holding_series.append({
+                    "ticker": t,
+                    "name":   h.get("name", t),
+                    "series": series,
+                })
+            except Exception:
+                continue
+
+        # Build blended portfolio line (equal-weighted for simplicity)
+        portfolio_line: list[dict] = []
+        try:
+            all_dates = sorted(set(
+                pt["date"] for hs in holding_series for pt in hs["series"]
+            ))
+            for date in all_dates:
+                values = []
+                for hs in holding_series:
+                    pt = next((p for p in hs["series"] if p["date"] == date), None)
+                    if pt:
+                        values.append(pt["indexed"])
+                if values:
+                    portfolio_line.append({"date": date, "value": round(sum(values) / len(values), 2)})
+        except Exception:
+            pass
+
+        return {
+            "ok":        True,
+            "period":    period,
+            "holdings":  holding_series,
+            "portfolio": portfolio_line,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Health check
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/health", include_in_schema=False)
 def health() -> dict:
-    return {"status": "ok", "cache_populated": any_cache_exists()}
+    import datetime as _dt
+    cache_db_path = _CACHE_DIR / "cache.db"
+    thesis_count = len(_read_json(_THESIS_CACHE))
+    dividend_count = len(_read_json(_DIVIDEND_CACHE))
+
+    briefing_age_hours = None
+    try:
+        from surveillance.briefing import load_briefing
+        b = load_briefing()
+        if b and b.get("generated_at"):
+            delta = _dt.datetime.utcnow() - _dt.datetime.fromisoformat(b["generated_at"])
+            briefing_age_hours = round(delta.total_seconds() / 3600, 1)
+    except Exception:
+        pass
+
+    with _refresh_lock:
+        refresh_running = _refresh_in_progress
+
+    return {
+        "status": "ok",
+        "cache_populated": cache_db_path.exists(),
+        "thesis_cached": thesis_count,
+        "dividends_cached": dividend_count,
+        "briefing_age_hours": briefing_age_hours,
+        "refresh_in_progress": refresh_running,
+        "timestamp": _dt.datetime.utcnow().isoformat() + "Z",
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════

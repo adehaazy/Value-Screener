@@ -36,3 +36,7 @@ env/
 
 # Streamlit local config (not secrets, just personal preferences)
 .streamlit/config.toml
+
+auth.db
+auth.db-journal
+*.db-journal
