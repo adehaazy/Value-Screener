@@ -5,7 +5,9 @@ Sources used (all free, no API keys required unless noted):
   - FRED (Federal Reserve) — macro indicators
   - ECB Statistical Data Warehouse — EU rates & inflation
   - ONS (UK Office for National Statistics) — UK macro
-  - RSS feeds — news headlines from Reuters, BBC, FT
+  - RSS feeds — news headlines from Reuters, BBC, FT, CNBC, MarketWatch,
+                WSJ, Yahoo Finance, Seeking Alpha, Barron's, Investopedia,
+                The Guardian
   - SEC EDGAR full-text search — US filings & 8-K material events
   - OpenInsider — US insider transactions (HTML scrape)
 
@@ -488,17 +490,34 @@ def get_uk_macro(force: bool = False) -> dict:
 
 # ══════════════════════════════════════════════════════════════════════════════
 # NEWS & SENTIMENT — RSS feeds
-# Sources: Reuters, BBC Business, FT (free headlines only)
+# Sources: Reuters, BBC, FT, CNBC, MarketWatch, WSJ, Yahoo Finance,
+#          Seeking Alpha, Investopedia, Barron's
 # Sentiment: VADER (if installed) else simple keyword scoring
 # TTL: 1 hour (news is time-sensitive)
 # ══════════════════════════════════════════════════════════════════════════════
 
 RSS_FEEDS = {
-    "Reuters Business":   "https://feeds.reuters.com/reuters/businessNews",
-    "BBC Business":       "https://feeds.bbci.co.uk/news/business/rss.xml",
-    "Reuters Markets":    "https://feeds.reuters.com/reuters/marketsNews",
-    "FT Markets":         "https://www.ft.com/markets?format=rss",
-    "Seeking Alpha":      "https://seekingalpha.com/market_currents.xml",
+    # ── Wires & broadcast ─────────────────────────────────────────────────────
+    "Reuters Business":     "https://feeds.reuters.com/reuters/businessNews",
+    "Reuters Markets":      "https://feeds.reuters.com/reuters/marketsNews",
+    "BBC Business":         "https://feeds.bbci.co.uk/news/business/rss.xml",
+
+    # ── US financial press ────────────────────────────────────────────────────
+    "CNBC Top News":        "https://search.cnbc.com/rs/search/combinedcombined/aroundtheworld/rss.xml?partnerId=wrss01&hasPremium=1&id=100003114",
+    "CNBC Finance":         "https://search.cnbc.com/rs/search/combinedcombined/aroundtheworld/rss.xml?partnerId=wrss01&hasPremium=1&id=10000664",
+    "MarketWatch":          "https://feeds.content.dowjones.io/public/rss/mw_topstories",
+    "WSJ Markets":          "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+    "WSJ Business":         "https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml",
+    "Yahoo Finance":        "https://finance.yahoo.com/news/rssindex",
+    "Barron's":             "https://www.barrons.com/feed?type=blog",
+    "Investopedia":         "https://www.investopedia.com/feedbuilder/feed/getfeed?feedName=rss_headline",
+
+    # ── Investment research ───────────────────────────────────────────────────
+    "Seeking Alpha":        "https://seekingalpha.com/market_currents.xml",
+
+    # ── UK / European press ───────────────────────────────────────────────────
+    "FT Markets":           "https://www.ft.com/markets?format=rss",
+    "The Guardian Business": "https://www.theguardian.com/uk/business/rss",
 }
 
 # Simple keyword-based sentiment (VADER fallback)
@@ -568,9 +587,10 @@ def _parse_rss(raw_bytes: bytes) -> list[dict]:
 
 def fetch_news(tickers: list[str] = None, force: bool = False) -> dict:
     """
-    Fetch headlines from all RSS feeds.
+    Fetch headlines from all RSS feeds (Reuters, CNBC, MarketWatch, WSJ,
+    Yahoo Finance, Seeking Alpha, Barron's, FT, Guardian, BBC, Investopedia).
     If tickers provided, also scores each headline for ticker relevance.
-    TTL: 1 hour.
+    TTL: 1 hour. Failures on individual feeds are silent — best-effort.
     """
     key = "rss_news"
     if not force and _is_fresh(key, ttl_hours=1):
@@ -579,21 +599,29 @@ def fetch_news(tickers: list[str] = None, force: bool = False) -> dict:
             return _filter_news_for_tickers(cached, tickers)
 
     all_items = []
+    feed_stats = {}
     for feed_name, url in RSS_FEEDS.items():
-        raw = _get(url)
-        if raw:
+        try:
+            raw = _get(url)
+            if not raw:
+                feed_stats[feed_name] = 0
+                continue
             items = _parse_rss(raw)
             for item in items:
-                item["feed"]     = feed_name
+                item["feed"]      = feed_name
                 item["sentiment"] = _vader_sentiment(item["title"] + " " + item.get("summary", ""))
             all_items.extend(items)
-        # Small delay to be polite to servers
+            feed_stats[feed_name] = len(items)
+        except Exception:
+            feed_stats[feed_name] = 0
+        # Polite delay between feeds
         time.sleep(0.3)
 
     result = {
         "fetched_at": datetime.now().isoformat(),
         "total":      len(all_items),
         "items":      all_items,
+        "feed_stats": feed_stats,
     }
     _save(key, result)
     return _filter_news_for_tickers(result, tickers)
